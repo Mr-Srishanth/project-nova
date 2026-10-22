@@ -67,6 +67,7 @@ import {
 } from "@/lib/uiStudio/inspectorEngine";
 import { PreviewSessionController, type PreviewSessionSnapshot } from "@/lib/uiStudio/previewSession";
 import { StudioDocumentManager, type FileSaveStatus } from "@/lib/uiStudio/studioDocuments";
+import { useProjectOpener } from "@/lib/uiStudio/useProjectOpener";
 import { generateTargetProjectBaseline } from "@/lib/build/targetProjectBaseline";
 import {
   buildExportManifest,
@@ -118,9 +119,6 @@ export const UIStudioPage: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     projectIdParam || activeProject?.id || null
   );
-  const projectsRef = useRef<Project[]>([]);
-  projectsRef.current = projects;
-
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === selectedProjectId) || null,
     [projects, selectedProjectId]
@@ -326,23 +324,26 @@ export const UIStudioPage: React.FC = () => {
   }, [selectedProjectId, pushNotification]);
 
   // --- Open project in the document manager --------------------------------------------
-  useEffect(() => {
-    if (!selectedProjectId) return;
-    const project = projectsRef.current.find((p) => p.id === selectedProjectId);
-    if (!project) return;
-    let cancelled = false;
-    (async () => {
-      await manager.openProject(selectedProjectId);
+  // The open is triggered by the *resolved project record* via useProjectOpener,
+  // not by the id alone: selectedProjectId can be set (URL param / global active
+  // project) before projectStorage.list() resolves, and an id-keyed effect ran
+  // too early, found no record, and never ran again — leaving the project
+  // unopened and unseeded (Rev 0, no files). The opener fires as soon as the
+  // record arrives, exactly once per selection.
+  const openSelectedProject = useCallback(
+    async (project: Project, isCurrent: () => boolean) => {
+      const projectId = project.id;
+      await manager.openProject(projectId);
       // Seed any missing baseline files (never overwrites saved content).
       const baseline = generateTargetProjectBaseline(project, project.blueprint);
-      const state = manager.getProjectState(selectedProjectId);
+      const state = manager.getProjectState(projectId);
       if (state) {
         const missing: BuildArtifact[] = [];
         for (const [path, content] of Object.entries(baseline)) {
           if (!state.files.has(path)) {
             missing.push({
-              id: `art_${selectedProjectId}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`,
-              projectId: selectedProjectId,
+              id: `art_${projectId}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`,
+              projectId,
               path,
               type: path.includes("app") || path.endsWith(".tsx") ? "frontend" : "config",
               purpose: `Baseline for ${path}`,
@@ -354,16 +355,16 @@ export const UIStudioPage: React.FC = () => {
             });
           }
         }
-        if (missing.length > 0) await manager.seedFiles(selectedProjectId, missing);
+        if (missing.length > 0) await manager.seedFiles(projectId, missing);
       }
-      if (cancelled) return;
-      const hist = await uiStudioHistoryStorage.list(selectedProjectId);
+      if (!isCurrent()) return;
+      const hist = await uiStudioHistoryStorage.list(projectId);
       setHistoryEntries(hist);
-      await loadChatSessions(selectedProjectId);
-      const savedTabs = tabsByProjectRef.current[selectedProjectId];
-      const entryPath = manager.getProjectState(selectedProjectId)?.files.has("src/app/App.tsx")
+      await loadChatSessions(projectId);
+      const savedTabs = tabsByProjectRef.current[projectId];
+      const entryPath = manager.getProjectState(projectId)?.files.has("src/app/App.tsx")
         ? "src/app/App.tsx"
-        : manager.getProjectState(selectedProjectId)?.files.keys().next().value || null;
+        : manager.getProjectState(projectId)?.files.keys().next().value || null;
       setOpenTabs(savedTabs?.open?.length ? savedTabs.open : entryPath ? [entryPath] : []);
       setSelectedFilePath(savedTabs?.active || entryPath);
       setSelectedElement(null);
@@ -376,12 +377,10 @@ export const UIStudioPage: React.FC = () => {
       setShowingFallback(false);
       setLastBuildResult(null);
       lastBuildKeyRef.current = "";
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProjectId]);
+    },
+    [manager, loadChatSessions]
+  );
+  useProjectOpener(selectedProject, openSelectedProject);
 
   // Persist the tab strip per project so switching back restores it.
   useEffect(() => {
