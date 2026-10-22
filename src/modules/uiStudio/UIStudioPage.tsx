@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import {
   Monitor,
   Tablet,
@@ -7,34 +7,13 @@ import {
   Play,
   Square,
   RotateCcw,
-  Download,
-  Hammer,
   AlertTriangle,
-  PanelRightClose,
-  PanelRightOpen,
-  PanelLeftClose,
-  PanelLeftOpen,
   Loader2,
   RefreshCw,
-  Maximize,
-  Minimize,
-  Save,
-  Undo2,
-  Redo2,
-  Eye,
-  Code2,
-  SplitSquareHorizontal,
-  FlaskConical,
   ExternalLink,
-  X,
-  CheckCircle2,
-  FolderTree,
+  Eye,
   MessageSquare,
   Sliders,
-  History,
-  Palette,
-  Activity,
-  Route as RouteIcon,
   MousePointerClick,
 } from "lucide-react";
 import type { Project } from "@/types/project";
@@ -44,7 +23,6 @@ import type {
   AIConversationMessage,
   UIStudioNotification,
   PreviewBuildResult,
-  ApplicationValidationReport,
 } from "@/types/uiStudio";
 import type { OperationHistoryEntry } from "@/types/uiStudioHistory";
 import { projectStorage } from "@/lib/storage/projectStorage";
@@ -52,12 +30,9 @@ import { artifactStorage } from "@/lib/storage/artifactStorage";
 import { uiStudioHistoryStorage } from "@/lib/storage/uiStudioHistoryStorage";
 import { uiChatSessionStorage, type UIChatSession } from "@/lib/storage/uiChatSessionStorage";
 import { buildTargetProjectPreviewHtml } from "@/lib/preview/previewBuilder";
-import { validateApplicationTarget } from "@/lib/validation/applicationValidator";
 import { planAIEdits } from "@/lib/uiStudio/aiEditEngine";
-import { StudioExplorer } from "./StudioExplorer";
 import { ElementInspector } from "./ElementInspector";
 import { AIAssistantPanel } from "./AIAssistantPanel";
-import { OperationHistoryView } from "./OperationHistoryView";
 import { InAppNotificationBanner } from "./InAppNotificationBanner";
 import type { InspectedElementData, InspectorChange } from "@/types/inspector";
 import {
@@ -69,20 +44,11 @@ import { PreviewSessionController, type PreviewSessionSnapshot } from "@/lib/uiS
 import { StudioDocumentManager, type FileSaveStatus } from "@/lib/uiStudio/studioDocuments";
 import { useProjectOpener } from "@/lib/uiStudio/useProjectOpener";
 import { generateTargetProjectBaseline } from "@/lib/build/targetProjectBaseline";
-import {
-  buildExportManifest,
-  createProjectZipArchive,
-  triggerBrowserZipDownload,
-} from "@/lib/build/zipExportService";
-import { parseBlueprintDirectoryTree } from "@/lib/build/blueprintDirectoryModel";
-import { MonacoCodeEditor } from "@/components/build/MonacoCodeEditor";
 import { useActiveProject } from "@/lib/context/ActiveProjectContext";
 
 type StudioViewport = "desktop" | "tablet" | "mobile" | "small";
-type CenterMode = "code" | "preview" | "split";
-type LeftSection = "files" | "pages" | "design" | "health";
-type RightTab = "ai" | "inspector" | "history";
-type MobileTab = "workspace" | "files" | "assistant" | "inspector";
+type RightTab = "ai" | "inspector";
+type MobileTab = "workspace" | "assistant" | "inspector";
 
 const VIEWPORTS: Array<{ id: StudioViewport; label: string; width: number | null; Icon: any }> = [
   { id: "desktop", label: "Desktop · 1440px", width: 1440, Icon: Monitor },
@@ -109,7 +75,6 @@ interface PreviewDoc {
 }
 
 export const UIStudioPage: React.FC = () => {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const projectIdParam = searchParams.get("project");
   const { activeProject, setActiveProjectId: setGlobalActiveProjectId } = useActiveProject();
@@ -146,26 +111,17 @@ export const UIStudioPage: React.FC = () => {
     [selectedProjectId, projState, docTick]
   );
 
-  // --- Editor state -----------------------------------------------------------
+  // --- File context (the AI assistant's active file; editing lives in Build Studio) ---
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const tabsByProjectRef = useRef<Record<string, { open: string[]; active: string | null }>>({});
-  const [centerMode, setCenterMode] = useState<CenterMode>("split");
-  const [splitRatio, setSplitRatio] = useState(50);
-  const [isDraggingSplit, setIsDraggingSplit] = useState(false);
 
   // --- Layout -----------------------------------------------------------------
-  const [leftSection, setLeftSection] = useState<LeftSection>("files");
-  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
-  const [leftPanelWidth, setLeftPanelWidth] = useState(264);
-  const [isResizingLeft, setIsResizingLeft] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("ai");
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelWidth, setRightPanelWidth] = useState(400);
   const [isResizingRight, setIsResizingRight] = useState(false);
-  const [isFocusPreview, setIsFocusPreview] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("workspace");
-  const workspaceRef = useRef<HTMLDivElement | null>(null);
 
   // --- Preview session ----------------------------------------------------------
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -209,10 +165,11 @@ export const UIStudioPage: React.FC = () => {
   const [conversationHistory, setConversationHistory] = useState<AIConversationMessage[]>([]);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
 
-  // --- History / validation / notifications ---------------------------------------
-  const [historyEntries, setHistoryEntries] = useState<OperationHistoryEntry[]>([]);
-  const [testReport, setTestReport] = useState<ApplicationValidationReport | null>(null);
-  const [showTestPanel, setShowTestPanel] = useState(false);
+  // --- History / notifications ---------------------------------------------------
+  // Operation history is still recorded to storage by the AI/inspector pipelines
+  // (status + verification updates); the History panel itself was removed from
+  // the layout, so only the setter is kept here.
+  const [, setHistoryEntries] = useState<OperationHistoryEntry[]>([]);
   const [notifications, setNotifications] = useState<UIStudioNotification[]>([]);
 
   const pushNotification = useCallback(
@@ -500,18 +457,6 @@ export const UIStudioPage: React.FC = () => {
 
   // --- Panel resizing ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!isResizingLeft) return;
-    const onMove = (e: MouseEvent) => setLeftPanelWidth(Math.max(200, Math.min(460, e.clientX)));
-    const onUp = () => setIsResizingLeft(false);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [isResizingLeft]);
-
-  useEffect(() => {
     if (!isResizingRight) return;
     const onMove = (e: MouseEvent) =>
       setRightPanelWidth(Math.max(320, Math.min(760, window.innerWidth - e.clientX)));
@@ -523,23 +468,6 @@ export const UIStudioPage: React.FC = () => {
       window.removeEventListener("mouseup", onUp);
     };
   }, [isResizingRight]);
-
-  useEffect(() => {
-    if (!isDraggingSplit) return;
-    const onMove = (e: MouseEvent) => {
-      const rect = workspaceRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const pct = ((e.clientX - rect.left) / rect.width) * 100;
-      setSplitRatio(Math.max(22, Math.min(78, pct)));
-    };
-    const onUp = () => setIsDraggingSplit(false);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [isDraggingSplit]);
 
   // --- Derived state ------------------------------------------------------------------------------
   const aggregateStatus: FileSaveStatus = useMemo(() => {
@@ -561,22 +489,10 @@ export const UIStudioPage: React.FC = () => {
     [filesList]
   );
 
-  const activeFile = selectedFilePath && projState ? projState.files.get(selectedFilePath) || null : null;
-
   const identified = useMemo(() => {
     if (!selectedElement || savedArtifacts.length === 0) return null;
     return resolveSourceArtifactForElement(selectedElement, savedArtifacts);
   }, [selectedElement, savedArtifacts]);
-
-  const validationReport = useMemo(() => {
-    if (!selectedProject || savedArtifacts.length === 0) return null;
-    return validateApplicationTarget(selectedProject.name, savedArtifacts, lastBuildResult?.archetype || "general_app", {
-      isMounted: previewSnap.stage === "ready",
-      hasRuntimeError: Boolean(previewSnap.error),
-      runtimeErrorMsg: previewSnap.error?.message || null,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProject, savedArtifacts, lastBuildResult, previewSnap, docTick]);
 
   const displayedDoc = showingFallback && fallbackDoc ? fallbackDoc : currentDoc;
   const stage = previewSnap.stage;
@@ -590,73 +506,11 @@ export const UIStudioPage: React.FC = () => {
     setGlobalActiveProjectId(id, true);
   };
 
-  const handleSelectFile = (path: string) => {
-    setSelectedFilePath(path);
-    setOpenTabs((prev) => (prev.includes(path) ? prev : [...prev, path]));
-    if (window.innerWidth < 768) setMobileTab("workspace");
-  };
-
-  const handleCloseTab = (path: string) => {
-    setOpenTabs((prev) => {
-      const next = prev.filter((p) => p !== path);
-      if (selectedFilePath === path) {
-        setSelectedFilePath(next.length > 0 ? next[next.length - 1] : null);
-      }
-      return next;
-    });
-  };
-
-  const handleSaveActive = async () => {
-    if (!selectedProjectId || !selectedFilePath) return;
-    const ok = await manager.saveFile(selectedProjectId, selectedFilePath);
-    if (ok) {
-      pushNotification("success", "Saved", `${selectedFilePath} persisted. Preview rebuilds from the new revision.`);
-    } else {
-      const err = manager.getProjectState(selectedProjectId)?.files.get(selectedFilePath)?.error;
-      pushNotification("error", "Save Failed", err || "The file could not be saved. Your draft is intact — retry from the toolbar.");
-    }
-  };
-
   const handleRetryFailed = async () => {
     if (!selectedProjectId) return;
     for (const f of failedFiles) {
       await manager.retrySave(selectedProjectId, f.path);
     }
-  };
-
-  const handleUndo = async () => {
-    if (!selectedProjectId) return;
-    const affected = await manager.undo(selectedProjectId);
-    if (affected) pushNotification("info", "Undo", `Reverted: ${affected.join(", ")}`);
-  };
-
-  const handleRedo = async () => {
-    if (!selectedProjectId) return;
-    const affected = await manager.redo(selectedProjectId);
-    if (affected) pushNotification("info", "Redo", `Reapplied: ${affected.join(", ")}`);
-  };
-
-  const handleCreateFile = async (path: string): Promise<boolean> => {
-    if (!selectedProjectId) return false;
-    return manager.createFile(selectedProjectId, path, "");
-  };
-
-  const handleRenameFile = async (oldPath: string, newPath: string): Promise<boolean> => {
-    if (!selectedProjectId) return false;
-    const ok = await manager.renameFile(selectedProjectId, oldPath, newPath);
-    if (ok) {
-      const normalized = newPath.replace(/\\/g, "/");
-      setOpenTabs((prev) => prev.map((p) => (p === oldPath ? normalized : p)));
-      if (selectedFilePath === oldPath) setSelectedFilePath(normalized);
-    }
-    return ok;
-  };
-
-  const handleDeleteFile = async (path: string): Promise<boolean> => {
-    if (!selectedProjectId) return false;
-    const ok = await manager.deleteFile(selectedProjectId, path);
-    if (ok) handleCloseTab(path);
-    return ok;
   };
 
   // --- Preview actions ------------------------------------------------------------------------------
@@ -673,42 +527,6 @@ export const UIStudioPage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank", "noopener");
     setTimeout(() => URL.revokeObjectURL(url), 60000);
-  };
-
-  const toggleFullscreen = () => {
-    if (isFocusPreview) {
-      setIsFocusPreview(false);
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    } else {
-      setIsFocusPreview(true);
-      workspaceRef.current?.requestFullscreen?.().catch(() => {});
-    }
-  };
-
-  const handleRunTests = () => {
-    if (!selectedProject) return;
-    const report = validateApplicationTarget(
-      selectedProject.name,
-      savedArtifacts,
-      lastBuildResult?.archetype || "general_app",
-      {
-        isMounted: stage === "ready",
-        hasRuntimeError: Boolean(previewSnap.error),
-        runtimeErrorMsg: previewSnap.error?.message || null,
-      }
-    );
-    setTestReport(report);
-    setShowTestPanel(true);
-  };
-
-  const handleDownloadZip = async () => {
-    if (!selectedProject) return;
-    const model = parseBlueprintDirectoryTree(
-      selectedProject.blueprint?.folderStructure || "app/\n├── index.html\n└── src/app/App.tsx"
-    );
-    const manifest = buildExportManifest(selectedProject.name, model, savedArtifacts);
-    const result = await createProjectZipArchive(manifest);
-    triggerBrowserZipDownload(result.blob, result.filename);
   };
 
   // --- Inspector actions ------------------------------------------------------------------------------
@@ -860,27 +678,6 @@ export const UIStudioPage: React.FC = () => {
     }
   };
 
-  // --- History revert -----------------------------------------------------------------------------------
-  const handleRevertHistoryEntry = async (entry: OperationHistoryEntry) => {
-    if (!selectedProjectId) return;
-    if (!entry.previousFileSnapshots || Object.keys(entry.previousFileSnapshots).length === 0) {
-      pushNotification("warning", "Revert Unavailable", "No file snapshots recorded for this operation.");
-      return;
-    }
-    const changes = Object.entries(entry.previousFileSnapshots).map(([path, content]) => ({ path, content }));
-    const result = await manager.applyExternalChanges(selectedProjectId, changes, {
-      label: `Revert operation: ${entry.summary}`,
-      author: "user",
-    });
-    if (result.failedPath) {
-      pushNotification("error", "Revert Failed", `Could not restore ${result.failedPath}: ${result.error || "unknown error"}`);
-      return;
-    }
-    await uiStudioHistoryStorage.updateStatus(entry.id, "reverted");
-    setHistoryEntries((prev) => prev.map((e) => (e.id === entry.id ? { ...e, status: "reverted" } : e)));
-    pushNotification("success", "Reverted Successfully", `Restored files to state prior to ${entry.id}.`);
-  };
-
   // --- AI assistant ---------------------------------------------------------------------------------------
   const executeApply = async (plan: AIEditPlan, opId: string) => {
     if (!selectedProjectId || !selectedProject) return;
@@ -1007,50 +804,8 @@ export const UIStudioPage: React.FC = () => {
     pushNotification("info", "Changes Rejected", "Proposed modifications discarded.");
   };
 
-  // --- Design tokens -----------------------------------------------------------------------------------------
-  const [tokenDrafts, setTokenDrafts] = useState<Record<string, string>>({
-    primaryColor: "#70C84B",
-    accentColor: "#2563EB",
-    borderRadius: "8px",
-    spacingUnit: "16px",
-    fontFamily: "Inter, sans-serif",
-  });
-  const [tokenDirty, setTokenDirty] = useState(false);
-
-  const handleApplyTokens = async () => {
-    if (!selectedProjectId) return;
-    const cssPath = "src/index.css";
-    const existing = savedArtifacts.find((a) => a.path === cssPath);
-    const base = (existing?.content || "").replace(/\n?\/\* Visual Design Tokens \*\/\n:root \{[^}]*\}\n?/g, "");
-    const rules = `\n/* Visual Design Tokens */\n:root {\n  --primary: ${tokenDrafts.primaryColor};\n  --accent: ${tokenDrafts.accentColor};\n  --radius: ${tokenDrafts.borderRadius};\n  --spacing: ${tokenDrafts.spacingUnit};\n  font-family: ${tokenDrafts.fontFamily};\n}\n`;
-    const result = await manager.applyExternalChanges(
-      selectedProjectId,
-      [{ path: cssPath, content: base + rules }],
-      { label: "Apply design tokens", author: "user" }
-    );
-    if (result.failedPath) {
-      pushNotification("error", "Failed to Save Tokens", result.error || "Persistence failed");
-      return;
-    }
-    setTokenDirty(false);
-    pushNotification("success", "Design Tokens Saved", "Global design tokens persisted to src/index.css");
-  };
-
   const activeViewport = VIEWPORTS.find((v) => v.id === viewport) || VIEWPORTS[0];
-  const canUndo = selectedProjectId ? manager.canUndo(selectedProjectId) : false;
-  const canRedo = selectedProjectId ? manager.canRedo(selectedProjectId) : false;
   const hasDirty = selectedProjectId ? manager.isDirty(selectedProjectId) : false;
-
-  const handleSaveAll = async () => {
-    if (!selectedProjectId) return;
-    const res = await manager.saveAllDirty(selectedProjectId);
-    if (res.failed.length > 0) {
-      pushNotification("error", "Some Files Failed to Save", `Failed: ${res.failed.join(", ")}. Drafts are intact — use Retry.`);
-    } else if (res.saved.length > 0) {
-      pushNotification("success", "All Changes Saved", `Saved ${res.saved.length} file(s). Preview rebuilds from the new revision.`);
-    }
-  };
-
   const stagePillCls =
     stage === "ready"
       ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
@@ -1074,26 +829,10 @@ export const UIStudioPage: React.FC = () => {
     (d) => !d.toLowerCase().includes("transpilation")
   );
 
-  const leftSections: Array<{ id: LeftSection; label: string; Icon: any }> = [
-    { id: "files", label: "Explorer", Icon: FolderTree },
-    { id: "pages", label: "Pages", Icon: RouteIcon },
-    { id: "design", label: "Design", Icon: Palette },
-    { id: "health", label: "Health", Icon: Activity },
-  ];
-
   return (
-    <div ref={workspaceRef} className="flex flex-col h-full w-full overflow-hidden bg-[#0b0d10] text-zinc-200">
-      {/* ======================= TOP TOOLBAR ======================= */}
+    <div className="flex flex-col h-full w-full overflow-hidden bg-[#0b0d10] text-zinc-200">
+      {/* ======================= TOP BAR ======================= */}
       <div className="h-11 shrink-0 flex items-center gap-2 px-2 border-b border-white/10 bg-[#101318] z-20">
-        <button
-          type="button"
-          onClick={() => setLeftPanelOpen(!leftPanelOpen)}
-          className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-white/5 cursor-pointer"
-          title={leftPanelOpen ? "Hide Explorer" : "Show Explorer"}
-        >
-          {leftPanelOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
-        </button>
-
         <select
           value={selectedProjectId || ""}
           onChange={(e) => handleSelectProject(e.target.value)}
@@ -1106,12 +845,6 @@ export const UIStudioPage: React.FC = () => {
             </option>
           ))}
         </select>
-
-        {validationReport && (
-          <span className="hidden lg:inline font-mono text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 border border-white/10 uppercase">
-            {validationReport.archetype.replace("_", " ")}
-          </span>
-        )}
 
         <span
           className="hidden md:inline font-mono text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-300 border border-white/10"
@@ -1133,152 +866,15 @@ export const UIStudioPage: React.FC = () => {
             Retry
           </button>
         )}
-        <button
-          type="button"
-          onClick={handleSaveAll}
-          disabled={!hasDirty && aggregateStatus !== "failed"}
-          className="hidden sm:flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded border border-white/10 text-zinc-200 hover:bg-white/5 disabled:opacity-40 cursor-pointer"
-          title="Save all modified files (editor also supports Ctrl+S per file)"
-        >
-          <Save className="w-3.5 h-3.5" /> Save
-        </button>
-        <button
-          type="button"
-          onClick={handleUndo}
-          disabled={!canUndo}
-          className="p-1.5 rounded text-zinc-300 hover:bg-white/5 disabled:opacity-40 cursor-pointer"
-          title="Undo last saved change"
-        >
-          <Undo2 className="w-4 h-4" />
-        </button>
-        <button
-          type="button"
-          onClick={handleRedo}
-          disabled={!canRedo}
-          className="p-1.5 rounded text-zinc-300 hover:bg-white/5 disabled:opacity-40 cursor-pointer"
-          title="Redo"
-        >
-          <Redo2 className="w-4 h-4" />
-        </button>
 
         <div className="flex-1" />
-
-        {/* Center-mode switch */}
-        <div className="hidden md:flex items-center bg-[#0b0d10] border border-white/10 rounded p-0.5" role="tablist" aria-label="Workspace mode">
-          {(
-            [
-              { id: "code", label: "Code", Icon: Code2 },
-              { id: "split", label: "Split", Icon: SplitSquareHorizontal },
-              { id: "preview", label: "Preview", Icon: Eye },
-            ] as Array<{ id: CenterMode; label: string; Icon: any }>
-          ).map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={centerMode === id}
-              onClick={() => setCenterMode(id)}
-              className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded cursor-pointer ${
-                centerMode === id ? "bg-white/10 text-zinc-50" : "text-zinc-400 hover:text-zinc-100"
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1" />
-
-        <button
-          type="button"
-          onClick={handleRefresh}
-          className="flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
-          title="Build the preview from the last saved revision"
-        >
-          <Hammer className="w-3.5 h-3.5" />
-          <span className="hidden xl:inline">Build</span>
-        </button>
-        <button
-          type="button"
-          onClick={handleRunTests}
-          className="flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded border border-white/10 text-zinc-200 hover:bg-white/5 cursor-pointer"
-          title="Validate the saved project (static + runtime checks)"
-        >
-          <FlaskConical className="w-3.5 h-3.5" />
-          <span className="hidden xl:inline">Test</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setIsRunning(!isRunning)}
-          className={`flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold rounded border cursor-pointer ${
-            isRunning
-              ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
-              : "border-white/10 text-zinc-300 hover:bg-white/5"
-          }`}
-          title={isRunning ? "Stop live preview" : "Start live preview"}
-        >
-          {isRunning ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-          <span className="hidden xl:inline">Live Preview</span>
-        </button>
-
-        {/* Viewport controls — set the REAL iframe width; content reflows */}
-        <div className="hidden lg:flex items-center bg-[#0b0d10] border border-white/10 rounded p-0.5">
-          {VIEWPORTS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setViewport(id)}
-              title={label}
-              aria-pressed={viewport === id}
-              className={`p-1.5 rounded cursor-pointer ${viewport === id ? "bg-white/10 text-zinc-50" : "text-zinc-400 hover:text-zinc-100"}`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-            </button>
-          ))}
-        </div>
-
-        <button
-          type="button"
-          onClick={toggleFullscreen}
-          className="p-1.5 rounded text-zinc-300 hover:bg-white/5 cursor-pointer"
-          title={isFocusPreview ? "Exit fullscreen focus" : "Fullscreen workspace"}
-        >
-          {isFocusPreview ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-        </button>
-        <button
-          type="button"
-          onClick={handleDownloadZip}
-          className="p-1.5 rounded text-zinc-300 hover:bg-white/5 cursor-pointer"
-          title="Download project as ZIP"
-        >
-          <Download className="w-4 h-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate(`/build?project=${selectedProjectId}`)}
-          className="hidden md:flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium rounded border border-white/10 text-zinc-200 hover:bg-white/5 cursor-pointer"
-          title="Open Build Studio"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          <span className="hidden xl:inline">Build Studio</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setRightPanelOpen(!rightPanelOpen)}
-          className="p-1.5 rounded text-zinc-300 hover:bg-white/5 cursor-pointer"
-          title={rightPanelOpen ? "Hide right panel" : "Show right panel"}
-        >
-          {rightPanelOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
-        </button>
       </div>
 
       {/* ======================= MOBILE TAB BAR ======================= */}
       <div className="md:hidden h-10 border-b border-white/10 bg-[#101318] flex items-center px-1 shrink-0 text-xs font-medium">
         {(
           [
-            { id: "workspace", label: "Studio", Icon: Eye },
-            { id: "files", label: "Files", Icon: FolderTree },
+            { id: "workspace", label: "Preview", Icon: Eye },
             { id: "assistant", label: "Assistant", Icon: MessageSquare },
             { id: "inspector", label: "Inspector", Icon: Sliders },
           ] as Array<{ id: MobileTab; label: string; Icon: any }>
@@ -1286,7 +882,11 @@ export const UIStudioPage: React.FC = () => {
           <button
             key={id}
             type="button"
-            onClick={() => setMobileTab(id)}
+            onClick={() => {
+              setMobileTab(id);
+              if (id === "assistant") setRightTab("ai");
+              if (id === "inspector") setRightTab("inspector");
+            }}
             className={`flex-1 py-1.5 flex items-center justify-center gap-1 rounded cursor-pointer ${
               mobileTab === id ? "bg-white/10 text-zinc-50" : "text-zinc-400"
             }`}
@@ -1299,331 +899,14 @@ export const UIStudioPage: React.FC = () => {
 
       {/* ======================= MAIN ROW ======================= */}
       <div className="flex-1 flex min-h-0 relative">
-        {/* ---------- LEFT: Explorer / Pages / Design / Health ---------- */}
-        {!isFocusPreview && leftPanelOpen && (
-          <aside
-            style={{ width: `${leftPanelWidth}px` }}
-            className={`shrink-0 h-full min-h-0 flex-col bg-[#101318] border-r border-white/10 ${
-              mobileTab === "files" ? "flex w-full absolute inset-0 z-30 md:relative md:w-auto" : "hidden md:flex"
-            }`}
-          >
-            <div className="flex items-center gap-0.5 px-2 pt-2 pb-1 shrink-0">
-              {leftSections.map(({ id, label, Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setLeftSection(id)}
-                  className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded cursor-pointer ${
-                    leftSection === id ? "bg-white/10 text-zinc-50" : "text-zinc-400 hover:text-zinc-100"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {leftSection === "files" && (
-              <div className="flex-1 min-h-0">
-                <StudioExplorer
-                  files={filesList}
-                  selectedFilePath={selectedFilePath}
-                  openPaths={openTabs}
-                  onSelectFile={handleSelectFile}
-                  onCreateFile={handleCreateFile}
-                  onRenameFile={handleRenameFile}
-                  onDeleteFile={handleDeleteFile}
-                />
-              </div>
-            )}
-
-            {leftSection === "pages" && (
-              <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0">
-                <div className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider px-1 py-1">
-                  Application Routes ({detectedRoutes.length})
-                </div>
-                {detectedRoutes.map((route) => (
-                  <button
-                    key={route}
-                    type="button"
-                    onClick={() => setSelectedRoute(route)}
-                    className={`w-full flex items-center gap-2 px-2.5 py-2 text-xs rounded text-left cursor-pointer ${
-                      selectedRoute === route
-                        ? "bg-emerald-500/15 text-zinc-50 border border-emerald-500/30"
-                        : "hover:bg-white/5 text-zinc-300 border border-transparent"
-                    }`}
-                  >
-                    <RouteIcon className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="font-mono">{route}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {leftSection === "design" && (
-              <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">Design Tokens</span>
-                  {tokenDirty && <span className="text-[9px] bg-amber-500/15 text-amber-300 px-1 rounded font-semibold">Modified</span>}
-                </div>
-                {(
-                  [
-                    { key: "primaryColor", label: "Primary", type: "color" },
-                    { key: "accentColor", label: "Accent", type: "color" },
-                  ] as const
-                ).map(({ key, label, type }) => (
-                  <div key={key}>
-                    <label className="text-[10px] text-zinc-500 block mb-1">{label}</label>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type={type}
-                        value={tokenDrafts[key]}
-                        onChange={(e) => {
-                          setTokenDrafts((prev) => ({ ...prev, [key]: e.target.value }));
-                          setTokenDirty(true);
-                        }}
-                        className="w-7 h-7 rounded cursor-pointer bg-transparent border border-white/15 p-0"
-                      />
-                      <input
-                        type="text"
-                        value={tokenDrafts[key]}
-                        onChange={(e) => {
-                          setTokenDrafts((prev) => ({ ...prev, [key]: e.target.value }));
-                          setTokenDirty(true);
-                        }}
-                        className="w-full text-[11px] font-mono px-1.5 py-1 rounded bg-[#0b0d10] border border-white/15 text-zinc-100"
-                      />
-                    </div>
-                  </div>
-                ))}
-                <div>
-                  <label className="text-[10px] text-zinc-500 block mb-1">Font Family</label>
-                  <select
-                    value={tokenDrafts.fontFamily}
-                    onChange={(e) => {
-                      setTokenDrafts((prev) => ({ ...prev, fontFamily: e.target.value }));
-                      setTokenDirty(true);
-                    }}
-                    className="w-full text-[11px] px-1.5 py-1.5 rounded bg-[#0b0d10] border border-white/15 text-zinc-100"
-                  >
-                    <option value="Inter, sans-serif">Inter (Modern Clean)</option>
-                    <option value="system-ui, sans-serif">System Default</option>
-                    <option value="'Fira Code', monospace">Fira Code (Technical)</option>
-                    <option value="Georgia, serif">Georgia (Editorial)</option>
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-zinc-500 block mb-1">Border Radius</label>
-                    <select
-                      value={tokenDrafts.borderRadius}
-                      onChange={(e) => {
-                        setTokenDrafts((prev) => ({ ...prev, borderRadius: e.target.value }));
-                        setTokenDirty(true);
-                      }}
-                      className="w-full text-[11px] px-1.5 py-1.5 rounded bg-[#0b0d10] border border-white/15 text-zinc-100"
-                    >
-                      <option value="0px">None (0px)</option>
-                      <option value="4px">Small (4px)</option>
-                      <option value="8px">Medium (8px)</option>
-                      <option value="16px">Large (16px)</option>
-                      <option value="9999px">Full (Pill)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-zinc-500 block mb-1">Base Spacing</label>
-                    <select
-                      value={tokenDrafts.spacingUnit}
-                      onChange={(e) => {
-                        setTokenDrafts((prev) => ({ ...prev, spacingUnit: e.target.value }));
-                        setTokenDirty(true);
-                      }}
-                      className="w-full text-[11px] px-1.5 py-1.5 rounded bg-[#0b0d10] border border-white/15 text-zinc-100"
-                    >
-                      <option value="12px">Compact (12px)</option>
-                      <option value="16px">Standard (16px)</option>
-                      <option value="24px">Relaxed (24px)</option>
-                    </select>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={!tokenDirty}
-                  onClick={handleApplyTokens}
-                  className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded disabled:opacity-40 cursor-pointer"
-                >
-                  Apply Tokens to src/index.css
-                </button>
-                <p className="text-[10px] text-zinc-600 leading-snug">
-                  Tokens are written as CSS variables into the project stylesheet through the same save pipeline as
-                  code edits, and the preview rebuilds from the new revision.
-                </p>
-              </div>
-            )}
-
-            {leftSection === "health" && (
-              <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
-                <div className="flex items-center justify-between px-0.5">
-                  <span className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider">Health Audit</span>
-                  {validationReport && (
-                    <span className="text-xs font-mono font-semibold text-zinc-100">{validationReport.score}%</span>
-                  )}
-                </div>
-                {validationReport ? (
-                  <>
-                    <div className="grid grid-cols-4 gap-1 text-center">
-                      {(
-                        [
-                          { label: "Static", value: validationReport.breakdown?.staticChecks },
-                          { label: "Build", value: validationReport.breakdown?.buildChecks },
-                          { label: "Arch", value: validationReport.breakdown?.archetypeCompliance },
-                          { label: "Runtime", value: validationReport.isVerified ? validationReport.breakdown?.runtimeHealth : undefined },
-                        ] as const
-                      ).map(({ label, value }) => (
-                        <div key={label} className="p-1.5 rounded bg-white/5 border border-white/10">
-                          <div className="text-[9px] text-zinc-500 font-medium">{label}</div>
-                          <div className="text-[11px] font-semibold text-zinc-100 font-mono">
-                            {value === undefined ? "—" : `${value}%`}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {validationReport.errors.length > 0 ? (
-                      validationReport.errors.map((err, i) => (
-                        <div key={i} className="p-2.5 border border-red-500/30 bg-red-500/10 rounded space-y-1">
-                          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-red-300">
-                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                            <span>
-                              {err.type.toUpperCase()}: {err.file || "General"}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-red-200/80">{err.message}</p>
-                          {err.suggestedFix && (
-                            <div className="text-[10px] text-red-200/70 bg-red-500/10 p-1.5 rounded font-mono">
-                              Fix: {err.suggestedFix}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="p-4 text-center space-y-1">
-                        <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto" />
-                        <div className="text-xs font-semibold text-zinc-100">All Criteria Verified</div>
-                        <p className="text-[11px] text-zinc-500">
-                          Structure, archetype compliance and runtime sanity checks passed.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-[11px] text-zinc-500">Open a project to see its health audit.</p>
-                )}
-              </div>
-            )}
-          </aside>
-        )}
-
-        {!isFocusPreview && leftPanelOpen && (
-          <div
-            onMouseDown={() => setIsResizingLeft(true)}
-            className="w-1 cursor-col-resize hover:bg-emerald-500/40 active:bg-emerald-500 transition-colors h-full hidden md:block shrink-0"
-            title="Drag to resize Explorer"
-          />
-        )}
-
-        {/* ---------- CENTER: Editor + Preview ---------- */}
+        {/* ---------- CENTER: Live Preview ---------- */}
         <main
           className={`flex-1 min-w-0 h-full min-h-0 ${mobileTab === "workspace" ? "flex" : "hidden md:flex"}`}
         >
-          {/* Editor */}
-          {centerMode !== "preview" && (
-            <div
-              className="flex flex-col min-w-0 h-full bg-[#0b0d10]"
-              style={centerMode === "split" ? { width: `${splitRatio}%` } : { flex: 1 }}
-            >
-              <div className="h-9 shrink-0 flex items-end gap-0.5 px-1.5 bg-[#101318] border-b border-white/10 overflow-x-auto">
-                {openTabs.map((path) => {
-                  const f = projState?.files.get(path);
-                  const dirty = f ? f.draftContent !== f.savedContent : false;
-                  const isActive = path === selectedFilePath;
-                  return (
-                    <div
-                      key={path}
-                      className={`group flex items-center gap-1.5 pl-2.5 pr-1 py-1.5 rounded-t text-[11px] font-mono whitespace-nowrap cursor-pointer border-b-2 ${
-                        isActive
-                          ? "bg-[#0b0d10] text-zinc-50 border-emerald-500"
-                          : "text-zinc-400 hover:text-zinc-100 border-transparent"
-                      }`}
-                      onClick={() => setSelectedFilePath(path)}
-                      title={path}
-                    >
-                      <span>{path.split("/").pop()}</span>
-                      {dirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title="Unsaved changes" />}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCloseTab(path);
-                        }}
-                        className="p-0.5 rounded text-zinc-500 hover:text-zinc-100 hover:bg-white/10 cursor-pointer"
-                        title="Close tab"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  );
-                })}
-                {openTabs.length === 0 && (
-                  <span className="text-[11px] text-zinc-600 px-2 py-1.5">No file open</span>
-                )}
-              </div>
-              <div className="flex-1 min-h-0 relative">
-                {activeFile ? (
-                  <MonacoCodeEditor
-                    key={activeFile.path}
-                    filePath={activeFile.path}
-                    value={activeFile.draftContent}
-                    onChange={(val) => selectedProjectId && manager.edit(selectedProjectId, activeFile.path, val)}
-                    onSave={handleSaveActive}
-                  />
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
-                    <Code2 className="w-8 h-8 text-zinc-700" />
-                    <p className="text-sm font-medium text-zinc-300">No file selected</p>
-                    <p className="text-xs text-zinc-500 max-w-xs">
-                      Pick a file in the Explorer to edit it. Edits are drafts until you save — the preview always
-                      builds from the last saved revision.
-                    </p>
-                  </div>
-                )}
-              </div>
-              {activeFile && (
-                <div className="h-6 shrink-0 flex items-center gap-3 px-2.5 bg-[#101318] border-t border-white/10 text-[10px] font-mono text-zinc-500">
-                  <span className="truncate">{activeFile.path}</span>
-                  <span className={activeFile.status === "failed" ? "text-red-300" : activeFile.draftContent !== activeFile.savedContent ? "text-amber-300" : "text-emerald-400"}>
-                    {activeFile.status === "failed"
-                      ? `Save failed: ${activeFile.error || "unknown error"}`
-                      : activeFile.draftContent !== activeFile.savedContent
-                      ? "Unsaved changes"
-                      : `Saved${activeFile.lastSavedAt ? ` · ${new Date(activeFile.lastSavedAt).toLocaleTimeString()}` : ""}`}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {centerMode === "split" && (
-            <div
-              onMouseDown={() => setIsDraggingSplit(true)}
-              className="w-1 cursor-col-resize hover:bg-emerald-500/40 active:bg-emerald-500 transition-colors h-full hidden md:block shrink-0 bg-white/5"
-              title="Drag to resize editor / preview split"
-            />
-          )}
-
           {/* Preview */}
-          {centerMode !== "code" && (
-            <div className="flex-1 flex flex-col min-w-0 h-full bg-[#0b0d10]">
+          <div className="flex-1 flex flex-col min-w-0 h-full bg-[#0b0d10]">
               <div className="h-9 shrink-0 flex items-center gap-2 px-2.5 bg-[#101318] border-b border-white/10">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Live Preview</span>
                 <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded border ${stagePillCls}`}>
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
@@ -1649,6 +932,21 @@ export const UIStudioPage: React.FC = () => {
                   {showingFallback ? " (fallback)" : ""}
                 </span>
                 <div className="flex-1" />
+                {/* Viewport controls — set the REAL iframe width; content reflows */}
+                <div className="hidden md:flex items-center bg-[#0b0d10] border border-white/10 rounded p-0.5">
+                  {VIEWPORTS.map(({ id, label, Icon }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setViewport(id)}
+                      title={label}
+                      aria-pressed={viewport === id}
+                      className={`p-1.5 rounded cursor-pointer ${viewport === id ? "bg-white/10 text-zinc-50" : "text-zinc-400 hover:text-zinc-100"}`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                    </button>
+                  ))}
+                </div>
                 <select
                   value={zoom}
                   onChange={(e) => setZoom(parseInt(e.target.value, 10))}
@@ -1820,18 +1118,17 @@ export const UIStudioPage: React.FC = () => {
                 )}
               </div>
             </div>
-          )}
         </main>
 
-        {/* ---------- RIGHT: AI / Inspector / History ---------- */}
-        {!isFocusPreview && rightPanelOpen && (
+        {/* ---------- RIGHT: AI Assistant / Inspector ---------- */}
+        {rightPanelOpen && (
           <div
             onMouseDown={() => setIsResizingRight(true)}
             className="w-1 cursor-col-resize hover:bg-emerald-500/40 active:bg-emerald-500 transition-colors h-full hidden md:block shrink-0"
             title="Drag to resize right panel"
           />
         )}
-        {!isFocusPreview && rightPanelOpen && (
+        {rightPanelOpen && (
           <aside
             style={{ width: `${rightPanelWidth}px` }}
             className={`shrink-0 h-full min-h-0 flex-col bg-[#101318] border-l border-white/10 ${
@@ -1845,7 +1142,6 @@ export const UIStudioPage: React.FC = () => {
                 [
                   { id: "ai", label: "AI Assistant", Icon: MessageSquare },
                   { id: "inspector", label: "Inspector", Icon: Sliders },
-                  { id: "history", label: "History", Icon: History },
                 ] as Array<{ id: RightTab; label: string; Icon: any }>
               ).map(({ id, label, Icon }) => (
                 <button
@@ -1854,8 +1150,7 @@ export const UIStudioPage: React.FC = () => {
                   onClick={() => {
                     setRightTab(id);
                     if (window.innerWidth < 768) {
-                      setMobileTab(id === "ai" ? "assistant" : id === "inspector" ? "inspector" : "workspace");
-                      if (id === "history") setMobileTab("assistant");
+                      setMobileTab(id === "ai" ? "assistant" : "inspector");
                     }
                   }}
                   className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded cursor-pointer ${
@@ -1893,7 +1188,6 @@ export const UIStudioPage: React.FC = () => {
                       setAiMode("edit");
                     }
                   }}
-                  onOpenHistory={() => setRightTab("history")}
                   onToggleExpandChat={() => setRightPanelWidth((prev) => (prev > 480 ? 400 : 620))}
                   isChatExpanded={rightPanelWidth > 480}
                   conversationHistory={conversationHistory}
@@ -1919,86 +1213,11 @@ export const UIStudioPage: React.FC = () => {
                   viewport={viewport === "small" ? "mobile" : viewport}
                 />
               )}
-              {rightTab === "history" && (
-                <OperationHistoryView
-                  entries={historyEntries}
-                  onSelectEntry={() => {}}
-                  onRevertEntry={handleRevertHistoryEntry}
-                  onClearHistory={async () => {
-                    if (selectedProjectId) {
-                      await uiStudioHistoryStorage.clear(selectedProjectId);
-                      setHistoryEntries([]);
-                      pushNotification("info", "History Cleared", "Operation history records cleared.");
-                    }
-                  }}
-                  onSelectFile={(path) => {
-                    handleSelectFile(path);
-                    setLeftSection("files");
-                    if (!leftPanelOpen) setLeftPanelOpen(true);
-                  }}
-                />
-              )}
             </div>
           </aside>
         )}
       </div>
 
-      {/* ======================= TEST RESULTS STRIP ======================= */}
-      {showTestPanel && testReport && (
-        <div className="shrink-0 border-t border-white/10 bg-[#101318] max-h-56 overflow-y-auto">
-          <div className="flex items-center gap-2 px-3 py-2 sticky top-0 bg-[#101318]">
-            <FlaskConical className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-semibold text-zinc-100">
-              Validation — {testReport.archetype.replace("_", " ")} · Score {testReport.score}%
-            </span>
-            <span
-              className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                testReport.functionalStatus === "passed"
-                  ? "bg-emerald-500/15 text-emerald-300"
-                  : testReport.functionalStatus === "failed"
-                  ? "bg-red-500/15 text-red-300"
-                  : "bg-white/5 text-zinc-400"
-              }`}
-            >
-              Functional: {testReport.functionalStatus.replace("_", " ")}
-            </span>
-            <div className="flex-1" />
-            <button
-              type="button"
-              onClick={() => setShowTestPanel(false)}
-              className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-white/5 cursor-pointer"
-              title="Close test results"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <div className="px-3 pb-2 grid md:grid-cols-2 gap-x-4 gap-y-1">
-            {testReport.checks.map((check, i) => (
-              <div key={i} className="flex items-start gap-2 text-[11px] py-0.5">
-                {check.passed ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-px" />
-                ) : (
-                  <AlertTriangle className="w-3.5 h-3.5 text-red-300 shrink-0 mt-px" />
-                )}
-                <span className={check.passed ? "text-zinc-300" : "text-red-200"}>
-                  <strong className="font-medium">{check.name}</strong>
-                  <span className="text-zinc-500"> — {check.detail}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-          {testReport.errors.length > 0 && (
-            <div className="px-3 pb-3 space-y-1">
-              {testReport.errors.map((err, i) => (
-                <p key={i} className="text-[11px] text-red-300 font-mono">
-                  {err.type}: {err.message}
-                  {err.file ? ` (${err.file})` : ""}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       <InAppNotificationBanner notifications={notifications} onDismiss={dismissNotification} />
     </div>
