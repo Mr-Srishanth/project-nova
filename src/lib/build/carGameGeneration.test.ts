@@ -7,6 +7,7 @@ import {
 import { parseBlueprintDirectoryTree } from "./blueprintDirectoryModel";
 import { buildExportManifest } from "./zipExportService";
 import { validateTargetProjectInIsolation } from "./targetProjectValidator";
+import { buildTargetProjectPreviewHtml } from "@/lib/preview/previewBuilder";
 import type { BuildArtifact } from "@/types/artifact";
 
 describe("Car Game Intent, Blueprint, Baseline & Export Verification", () => {
@@ -237,5 +238,77 @@ describe("Car Game Intent, Blueprint, Baseline & Export Verification", () => {
       expect(appContent).toContain("overflow-x-hidden");
       expect(appContent).toContain("box-border");
     }
+  });
+
+  it("generates an App.tsx with balanced component closers (no duplicated close-paren)", () => {
+    const baseline = generateTargetProjectBaseline(carGameProject as any);
+    const appTsx = baseline["src/app/App.tsx"];
+
+    // Regression: the template once emitted a duplicated "  );" after the
+    // return statement, which broke transpilation of the whole file
+    // (surfaced as: Transpilation error: Unexpected token, expected ";" (161:42)).
+    expect(appTsx.trimEnd().endsWith("    </div>\n  );\n};")).toBe(true);
+    expect(appTsx).not.toContain("  );\n  );");
+  });
+
+  it("builds a preview from the freshly generated baseline with no transpilation error", () => {
+    const baseline = generateTargetProjectBaseline(carGameProject as any);
+    const artifacts: BuildArtifact[] = Object.entries(baseline).map(([filePath, content]) => ({
+      id: `art_${filePath}`,
+      projectId: carGameProject.id,
+      path: filePath,
+      type: "frontend",
+      purpose: `Baseline for ${filePath}`,
+      status: "approved",
+      content,
+      language: filePath.endsWith(".ts") || filePath.endsWith(".tsx") ? "typescript" : "text",
+      dependencies: [],
+      versions: [],
+    }));
+
+    const preview = buildTargetProjectPreviewHtml(carGameProject.name, artifacts);
+    expect(preview.entryFile).toBe("src/app/App.tsx");
+    expect(preview.diagnostics.filter((d) => d.includes("Transpilation error"))).toHaveLength(0);
+    // The transpiled game component actually made it into the document
+    expect(preview.html).toContain("START PLAYING");
+  });
+
+  it("locks the car game to a single viewport-sized screen with no scrollbars", () => {
+    const baseline = generateTargetProjectBaseline(carGameProject as any);
+    const appTsx = baseline["src/app/App.tsx"];
+    const indexCss = baseline["src/index.css"];
+
+    // Root container is sized to the dynamic viewport and clips overflow on
+    // both axes instead of growing with content (the old min-h-screen root
+    // plus vh-capped canvas overflowed short/narrow preview viewports).
+    expect(appTsx).toContain("h-[100dvh]");
+    expect(appTsx).toContain("max-h-[100dvh]");
+    expect(appTsx).toContain("overflow-hidden");
+    expect(appTsx).not.toContain("min-h-screen");
+    // The canvas scales to its stage instead of fixed vh caps.
+    expect(appTsx).toContain("max-h-full");
+    expect(appTsx).not.toContain("max-h-[52vh]");
+
+    // The generated shell itself is height-locked and non-scrolling.
+    expect(indexCss).toContain("height: 100%");
+    expect(indexCss).toContain("overflow: hidden");
+  });
+
+  it("keeps the viewport-lock shell scoped to the car_game archetype only", () => {
+    const arcadeProject = {
+      id: "proj_arcade",
+      name: "Space Dodge Arcade",
+      category: "Game Development",
+      objective: "Retro arcade falling blocks dodging game",
+      technologies: ["React", "TypeScript", "Canvas"],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const baseline = generateTargetProjectBaseline(arcadeProject as any);
+
+    // Other archetypes keep the original free-scrolling shell, unchanged.
+    expect(baseline["src/index.css"]).not.toContain("overflow: hidden");
+    expect(baseline["src/app/App.tsx"]).toContain("min-h-screen");
+    expect(baseline["src/app/App.tsx"]).not.toContain("h-[100dvh]");
   });
 });

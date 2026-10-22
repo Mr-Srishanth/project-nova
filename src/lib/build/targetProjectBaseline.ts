@@ -177,7 +177,29 @@ if (rootEl) {
 }
 `;
 
-  const indexCss = `@tailwind base;
+  // The car game is a static single-screen experience: its shell locks the
+  // document to the viewport height and disables scrolling entirely. Other
+  // archetypes keep the original free-scrolling shell, byte-identical.
+  const indexCss =
+    archetype === "car_game"
+      ? `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  user-select: none;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+`
+      : `@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -476,7 +498,7 @@ export const App: React.FC = () => {
   }, [gameState, highScore]);
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col items-center justify-start p-2 sm:p-4 md:p-6 overflow-x-hidden box-border">
+    <div className="h-[100dvh] max-h-[100dvh] w-full bg-slate-950 text-slate-100 flex flex-col items-center justify-start p-2 sm:p-4 md:p-6 overflow-hidden overflow-x-hidden box-border">
       {/* Top Telemetry Header */}
       <header className="w-full max-w-4xl flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-3 border-b border-slate-800 shrink-0">
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -499,7 +521,7 @@ export const App: React.FC = () => {
       </header>
 
       {/* Main Game Stage Wrapper */}
-      <main className="w-full max-w-4xl flex-1 flex flex-col md:flex-row items-center justify-center gap-4 md:gap-6 my-auto min-h-0">
+      <main className="w-full max-w-4xl flex-1 flex flex-col md:flex-row items-center justify-center gap-4 md:gap-6 min-h-0">
         {/* Left Telemetry Panel (Desktop) */}
         <aside className="hidden md:flex flex-col gap-3 w-56 text-xs font-mono shrink-0">
           <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-2">
@@ -526,12 +548,12 @@ export const App: React.FC = () => {
         </aside>
 
         {/* Center Canvas Game Viewport */}
-        <div className="relative border-2 sm:border-4 border-slate-800 rounded-2xl overflow-hidden shadow-2xl bg-slate-900 w-full max-w-[400px] flex items-center justify-center shrink-0">
+        <div className="relative border-2 sm:border-4 border-slate-800 rounded-2xl overflow-hidden shadow-2xl bg-slate-900 w-full max-w-[400px] h-full max-h-full min-h-0 min-w-0 flex items-center justify-center shrink">
           <canvas
             ref={canvasRef}
             width={400}
             height={600}
-            className="block bg-slate-950 w-full h-auto max-h-[52vh] sm:max-h-[60vh] md:max-h-[65vh] aspect-[2/3] object-contain touch-none"
+            className="block bg-slate-950 max-w-full max-h-full w-auto h-auto aspect-[2/3] touch-none"
           />
 
           {/* Overlay Menu */}
@@ -660,7 +682,6 @@ export const App: React.FC = () => {
         </button>
       </footer>
     </div>
-  );
   );
 };
 `;
