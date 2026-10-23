@@ -2,6 +2,7 @@ import type { SubsystemHealthResult } from "@/types/observability";
 import { OBSERVABILITY_STORAGE_KEY } from "@/lib/storage/observabilityStorage";
 import { CAPABILITY_REGISTRY } from "@/lib/execution/capabilityRegistry";
 import { AIGatewayClient } from "@/lib/ai/client";
+import { GATEWAY_ORIGIN } from "@/lib/gatewayBase";
 
 /**
  * Deterministic Health Assessment Engine
@@ -179,7 +180,7 @@ export async function assessSystemHealth(options?: {
         subsystem: "ai_gateway",
         title: "AI Provider Gateway",
         status: "unavailable",
-        explanation: "AI gateway server is not reachable on http://localhost:4000. Start server with 'bun run server'.",
+        explanation: `AI gateway server is not reachable on ${GATEWAY_ORIGIN}. Start server with 'bun run server'.`,
         isLiveTested: true,
         lastChecked: now,
         suggestedAction: "Start local AI gateway server with 'bun run server' in a terminal.",
@@ -194,7 +195,7 @@ export async function assessSystemHealth(options?: {
       explanation: "Gateway server connectivity not tested in passive mode. Run manual check to verify live reachability.",
       isLiveTested: false,
       lastChecked: now,
-      suggestedAction: "Click 'Run Diagnostics' to test live connection to http://localhost:4000.",
+      suggestedAction: `Click 'Run Diagnostics' to test live connection to ${GATEWAY_ORIGIN}.`,
     });
   }
 

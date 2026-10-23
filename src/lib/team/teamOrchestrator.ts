@@ -14,6 +14,7 @@ import {
 } from '../../types/team';
 import { SPECIALIST_AGENTS } from './agentRegistry';
 import { teamStorage } from '../storage/teamStorage';
+import { GATEWAY_ORIGIN } from '../gatewayBase';
 import { consensusEngine } from './consensusEngine';
 import { projectStorage } from '../storage/projectStorage';
 import { brainStorage } from '../storage/brainStorage';
@@ -189,7 +190,7 @@ export class TeamOrchestrator {
 
     // Check gateway status
     try {
-      const resp = await fetch('http://localhost:4000/api/ai/health', { method: 'GET' }).catch(() => null);
+      const resp = await fetch(`${GATEWAY_ORIGIN}/api/ai/health`, { method: 'GET' }).catch(() => null);
       if (resp && resp.ok) {
         run.isAiGatewayConnected = true;
       }

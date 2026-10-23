@@ -1,3 +1,5 @@
+import { GATEWAY_ORIGIN } from "../gatewayBase";
+
 export interface RepoFileInfo {
   path: string;
   name: string;
@@ -69,7 +71,7 @@ export interface FileInspectionResult {
   relatedTests: string[];
 }
 
-const GATEWAY_BASE = "http://localhost:4000/api/repo";
+const GATEWAY_BASE = `${GATEWAY_ORIGIN}/api/repo`;
 
 export class RealFsRepositoryClient {
   async scan(options?: {

@@ -2,6 +2,8 @@
  * Client for interacting with ProjectNova Server Gateway for Deployment & Git operations.
  */
 
+import { GATEWAY_ORIGIN } from "../gatewayBase";
+
 export interface ServerGitStatus {
   isGit: boolean;
   currentBranch: string;
@@ -23,7 +25,7 @@ export interface ServerCredentialStatus {
   githubSource: "server_env" | "user_session" | "none";
 }
 
-const GATEWAY_URL = "http://localhost:4000";
+const GATEWAY_URL = GATEWAY_ORIGIN;
 
 export const deploymentApiClient = {
   async getGitStatus(): Promise<ServerGitStatus> {

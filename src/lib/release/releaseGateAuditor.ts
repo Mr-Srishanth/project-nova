@@ -14,6 +14,7 @@
  */
 
 import { projectStorage } from '../storage/projectStorage';
+import { GATEWAY_ORIGIN } from '../gatewayBase';
 import { qualityStorage } from '../storage/qualityStorage';
 import { brainStorage } from '../storage/brainStorage';
 import { testStorage } from '../storage/testStorage';
@@ -159,7 +160,7 @@ export class ReleaseGateAuditor {
     // 9. Server vs Browser Security Boundary (Phase 11, 20)
     let isAiGatewayConfigured = false;
     try {
-      const resp = await fetch('http://localhost:4000/api/ai/health', { method: 'GET' }).catch(() => null);
+      const resp = await fetch(`${GATEWAY_ORIGIN}/api/ai/health`, { method: 'GET' }).catch(() => null);
       if (resp && resp.ok) {
         const json = await resp.json();
         isAiGatewayConfigured = json.status === 'ok';

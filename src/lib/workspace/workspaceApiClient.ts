@@ -1,3 +1,5 @@
+import { GATEWAY_ORIGIN } from "../gatewayBase";
+
 export interface WorkspaceFileMetadata {
   path: string;
   name: string;
@@ -14,7 +16,7 @@ export interface WorkspaceCommandResult {
   error?: string;
 }
 
-const GATEWAY_BASE = "http://localhost:4000";
+const GATEWAY_BASE = GATEWAY_ORIGIN;
 
 export const workspaceApiClient = {
   async listFiles(projectId: string): Promise<WorkspaceFileMetadata[]> {
