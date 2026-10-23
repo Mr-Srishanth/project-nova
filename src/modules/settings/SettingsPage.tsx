@@ -21,6 +21,7 @@ import {
 import { aiClient } from "@/lib/ai/client";
 import type { GatewayHealthResponse, SupportedGeminiModel } from "@/lib/ai/types";
 import { getOrCreateSessionId } from "@/lib/storage/userSession";
+import { GATEWAY_ORIGIN } from "@/lib/gatewayBase";
 
 interface ServiceStatus {
   state: "unconfigured" | "configured" | "testing" | "connected" | "error";
@@ -772,7 +773,7 @@ export const SettingsPage: React.FC = () => {
               </span>
               <ul className="list-disc list-inside space-y-1 text-[#153A52]/80 leading-relaxed text-[11px]">
                 <li>
-                  <strong>Gemini Keys:</strong> Processed exclusively through the backend gateway at <code className="font-mono bg-[#FAF7ED] px-1 py-0.5 rounded">http://localhost:4000</code> and never bundled into client JavaScript.
+                  <strong>Gemini Keys:</strong> Processed exclusively through the backend gateway at <code className="font-mono bg-[#FAF7ED] px-1 py-0.5 rounded">{GATEWAY_ORIGIN}</code> and never bundled into client JavaScript.
                 </li>
                 <li>
                   <strong>Supabase Anon Keys:</strong> Restricted to publishable client scopes governed by Row Level Security (RLS). High-privilege service roles are strictly banned.

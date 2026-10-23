@@ -6,8 +6,9 @@ import type {
 } from "./types";
 import type { IdeaUnderstandingResult } from "./ideaTypes";
 import { validateIdeaUnderstandingResponse } from "./ideaValidator";
+import { GATEWAY_ORIGIN } from "../gatewayBase";
 
-const GATEWAY_BASE = "http://localhost:4000/api/ai";
+const GATEWAY_BASE = `${GATEWAY_ORIGIN}/api/ai`;
 
 export class AIGatewayClient {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -29,7 +30,7 @@ export class AIGatewayClient {
     } catch (err: any) {
       if (err.message?.includes("Failed to fetch") || err.message?.includes("ECONNREFUSED")) {
         throw new Error(
-          "AI Gateway server is not reachable on http://localhost:4000. Start server with 'bun run server'."
+          `AI Gateway server is not reachable on ${GATEWAY_ORIGIN}. Start server with 'bun run server'.`
         );
       }
       throw err;
@@ -144,7 +145,7 @@ export class AIGatewayClient {
     supabaseUrl?: string;
     supabaseAnonKey?: string;
   }): Promise<any> {
-    const res = await fetch("http://localhost:4000/api/settings/credentials", {
+    const res = await fetch(`${GATEWAY_ORIGIN}/api/settings/credentials`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -157,7 +158,7 @@ export class AIGatewayClient {
   }
 
   async clearCredentials(sessionId: string): Promise<any> {
-    const res = await fetch("http://localhost:4000/api/settings/credentials/clear", {
+    const res = await fetch(`${GATEWAY_ORIGIN}/api/settings/credentials/clear`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionId }),
@@ -174,7 +175,7 @@ export class AIGatewayClient {
     model?: string;
     sessionId?: string;
   }): Promise<any> {
-    const res = await fetch("http://localhost:4000/api/settings/test-gemini", {
+    const res = await fetch(`${GATEWAY_ORIGIN}/api/settings/test-gemini`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -191,7 +192,7 @@ export class AIGatewayClient {
     anonKey?: string;
     sessionId?: string;
   }): Promise<any> {
-    const res = await fetch("http://localhost:4000/api/settings/test-supabase", {
+    const res = await fetch(`${GATEWAY_ORIGIN}/api/settings/test-supabase`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
