@@ -41,6 +41,9 @@ interface AIAssistantPanelProps {
   activeOperationId?: string | null;
   runtimeError?: string | null;
   onNewSession?: () => void;
+  // Single-Prompt Project Creation Handoff Actions
+  pendingCreationPrompt?: string | null;
+  onGenerateInitialProject?: () => void;
 }
 
 export const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
@@ -62,6 +65,8 @@ export const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   activeOperationId,
   runtimeError,
   onNewSession,
+  pendingCreationPrompt,
+  onGenerateInitialProject,
 }) => {
   const [expandedDiffs, setExpandedDiffs] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -79,8 +84,12 @@ export const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
 
   // Auto-scroll to bottom of conversation only if user is near bottom
   useEffect(() => {
-    if (!isUserScrolledUpRef.current && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (!isUserScrolledUpRef.current) {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+      } else if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
     }
   }, [conversationHistory.length, activePlan?.id, activePlan?.applied]);
 
@@ -275,8 +284,59 @@ export const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
         tabIndex={0}
         aria-label="AI Conversation Stream"
       >
+        {/* Single-Prompt Initial Generation Callout when project is ungenerated */}
+        {pendingCreationPrompt && onGenerateInitialProject && (
+          <div className="p-3.5 rounded-xl bg-gradient-to-b from-primary/15 via-[#15181f] to-[#101318] border-2 border-primary/40 shadow-lg space-y-2.5 animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-primary text-primary-foreground shadow-sm">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-zinc-100">Ready to build your project?</h4>
+                <p className="text-[10px] text-zinc-400">We'll use the prompt you entered when creating this project.</p>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-[#0d0f12] border border-white/10 text-xs text-zinc-300 font-sans leading-relaxed max-h-36 overflow-y-auto">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-primary font-bold block mb-1">
+                Saved Creation Prompt:
+              </span>
+              "{pendingCreationPrompt}"
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPrompt(pendingCreationPrompt)}
+                className="text-[11px] font-semibold text-zinc-400 hover:text-zinc-200 underline cursor-pointer"
+              >
+                Edit prompt
+              </button>
+
+              <button
+                type="button"
+                onClick={onGenerateInitialProject}
+                disabled={isProcessing}
+                className="px-4 py-2 bg-gradient-to-r from-primary to-emerald-500 hover:opacity-95 text-primary-foreground font-black rounded-lg text-xs shadow-md flex items-center gap-1.5 transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Generating…</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    <span>Generate this project</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Empty State with Compact Suggested Actions */}
-        {conversationHistory.length === 0 && !activePlan && (
+        {conversationHistory.length === 0 && !activePlan && !pendingCreationPrompt && (
           <div className="h-full flex flex-col items-center justify-center text-center p-3 text-zinc-400 space-y-3">
             <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
               <Bot className="w-4 h-4" />

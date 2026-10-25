@@ -11,8 +11,21 @@ export function detectProjectArchetype(project: {
   objective?: string;
   description?: string;
   technologies?: string[];
-}): "car_game" | "game" | "dashboard" | "website" | "data_pipeline" | "web_app" {
+}): "car_game" | "game" | "dashboard" | "website" | "ecommerce" | "data_pipeline" | "web_app" {
   const combined = `${project.name} ${project.category || ""} ${project.objective || ""} ${project.description || ""} ${(project.technologies || []).join(" ")}`.toLowerCase();
+
+  if (
+    combined.includes("shop") ||
+    combined.includes("ecommerce") ||
+    combined.includes("e-commerce") ||
+    combined.includes("store") ||
+    combined.includes("cart") ||
+    combined.includes("liquid glass") ||
+    combined.includes("checkout") ||
+    combined.includes("catalog")
+  ) {
+    return "ecommerce";
+  }
 
   if (
     (combined.includes("car") || combined.includes("racing") || combined.includes("drive") || combined.includes("vehicle") || combined.includes("speed")) &&
@@ -934,6 +947,566 @@ export const App: React.FC = () => {
 
       <footer className="max-w-6xl mx-auto p-4 sm:p-6 border-t border-slate-800 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
         <span>© ${new Date().getFullYear()} ${project.name}. All rights reserved.</span>
+        <span>Built with ProjectNova AI</span>
+      </footer>
+    </div>
+  );
+};
+`;
+  } else if (archetype === "ecommerce") {
+    // E-Commerce Shopping Experience with Liquid Glass Styling & 5 Interactive Views
+    appTsx = `import React, { useState, useEffect } from "react";
+import { ShoppingBag, ShoppingCart, User, Key, ArrowRight, Plus, Minus, Trash2, CheckCircle2, ShieldCheck, Sparkles } from "lucide-react";
+
+interface Product {
+  id: string;
+  name: string;
+  tagline: string;
+  price: number;
+  category: string;
+  rating: number;
+  badge: string;
+}
+
+const PRODUCTS: Product[] = [
+  { id: "prod-1", name: "CyberDeck Vision Neo", tagline: "Bionic augmented interface glasses with neural link optics", price: 1299, category: "Hardware", rating: 4.9, badge: "Liquid Glass Edition" },
+  { id: "prod-2", name: "PulseCore Synthesizer", tagline: "Tactile haptic audio workstation with optical keybed", price: 849, category: "Audio", rating: 4.8, badge: "Flagship" },
+  { id: "prod-3", name: "Aetheria Glass Pod", tagline: "Levitating ambient sound sphere with midnight acoustic core", price: 450, category: "Lifestyle", rating: 4.9, badge: "Trending" },
+  { id: "prod-4", name: "Neural Chrono V2", tagline: "Biometric chronometer encased in curved fused sapphire", price: 620, category: "Wearables", rating: 4.7, badge: "New" },
+  { id: "prod-5", name: "Quantum Data Key", tagline: "20TB crystalline cold-storage vault with biometric touch", price: 299, category: "Security", rating: 5.0, badge: "Ultra" },
+  { id: "prod-6", name: "Prism Flow Headset", tagline: "Zero-latency holographic acoustic monitor with frosted chassis", price: 399, category: "Audio", rating: 4.8, badge: "Popular" }
+];
+
+interface CartItem {
+  product: Product;
+  quantity: number;
+}
+
+export const App: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<"home" | "catalog" | "cart" | "login" | "register">("home");
+  
+  // Persistent Quantum Ledger Cart State
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem("nova_liquid_glass_cart");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    // Seed with two default products matching prompt test arithmetic ($1299 + $849 = $2148)
+    return [
+      { product: PRODUCTS[0], quantity: 1 },
+      { product: PRODUCTS[1], quantity: 1 }
+    ];
+  });
+
+  // Auth Form State
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [loginMsg, setLoginMsg] = useState("");
+  const [regName, setRegName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regPass, setRegPass] = useState("");
+  const [regMsg, setRegMsg] = useState("");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("nova_liquid_glass_cart", JSON.stringify(cart));
+    } catch (e) {}
+  }, [cart]);
+
+  const addToCart = (product: Product) => {
+    setCart((prev) => {
+      const existing = prev.find((item) => item.product.id === product.id);
+      if (existing) {
+        return prev.map((item) =>
+          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      }
+      return [...prev, { product, quantity: 1 }];
+    });
+  };
+
+  const updateQuantity = (productId: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((item) => {
+          if (item.product.id === productId) {
+            const newQty = item.quantity + delta;
+            return newQty > 0 ? { ...item, quantity: newQty } : null;
+          }
+          return item;
+        })
+        .filter(Boolean) as CartItem[]
+    );
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  };
+
+  const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
+  const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
+
+  return (
+    <div className="relative min-h-screen w-full bg-[#0f0c20] text-slate-100 font-sans selection:bg-[#ff007f] selection:text-white overflow-x-hidden">
+      {/* Dynamic Animated Liquid Glow Blobs */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#00f0ff]/20 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute top-1/3 -right-32 w-96 h-96 bg-[#ff007f]/25 rounded-full blur-[140px] animate-pulse" style={{ animationDuration: "6s" }} />
+        <div className="absolute -bottom-32 left-1/3 w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[150px]" />
+      </div>
+
+      {/* Glass Navigation Header */}
+      <nav className="sticky top-0 z-50 w-full backdrop-blur-2xl bg-[#0f0c20]/60 border-b border-white/10 px-4 sm:px-8 py-3.5 flex items-center justify-between shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]">
+        <div 
+          onClick={() => setActiveTab("home")}
+          className="flex items-center gap-2.5 cursor-pointer group"
+        >
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#ff007f] to-[#00f0ff] p-[1.5px] shadow-[0_0_20px_rgba(255,0,127,0.4)]">
+            <div className="w-full h-full bg-[#0f0c20] rounded-[10px] flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-cyan-300 group-hover:rotate-12 transition-transform" />
+            </div>
+          </div>
+          <span className="font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-100 to-[#00f0ff] text-lg sm:text-xl">
+            \${project.name}
+          </span>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-1 sm:gap-2 bg-white/5 border border-white/10 p-1 rounded-2xl backdrop-blur-md">
+          <button
+            onClick={() => setActiveTab("home")}
+            className={\`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer \${
+              activeTab === "home" ? "bg-white/15 text-white shadow-inner border border-white/10" : "text-slate-400 hover:text-white"
+            }\`}
+          >
+            Home
+          </button>
+          <button
+            onClick={() => setActiveTab("catalog")}
+            className={\`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer \${
+              activeTab === "catalog" ? "bg-white/15 text-white shadow-inner border border-white/10" : "text-slate-400 hover:text-white"
+            }\`}
+          >
+            Catalog
+          </button>
+          <button
+            onClick={() => setActiveTab("cart")}
+            className={\`relative px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 \${
+              activeTab === "cart" ? "bg-white/15 text-white shadow-inner border border-white/10" : "text-slate-400 hover:text-white"
+            }\`}
+          >
+            <ShoppingCart className="w-3.5 h-3.5" />
+            <span>Cart</span>
+            {totalItems > 0 && (
+              <span className="px-1.5 py-0.2 bg-[#ff007f] text-white text-[10px] font-black rounded-full shadow-[0_0_8px_#ff007f]">
+                {totalItems}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("login")}
+            className={\`hidden sm:block px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer \${
+              activeTab === "login" ? "bg-white/15 text-white shadow-inner border border-white/10" : "text-slate-400 hover:text-white"
+            }\`}
+          >
+            Login
+          </button>
+          <button
+            onClick={() => setActiveTab("register")}
+            className={\`hidden sm:block px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer \${
+              activeTab === "register" ? "bg-white/15 text-white shadow-inner border border-white/10" : "text-slate-400 hover:text-white"
+            }\`}
+          >
+            Register
+          </button>
+        </div>
+      </nav>
+
+      {/* View 1: Home Page */}
+      {activeTab === "home" && (
+        <main className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-20 flex flex-col items-center text-center">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/15 backdrop-blur-xl mb-6 shadow-[0_0_20px_rgba(0,240,255,0.15)]">
+            <span className="w-2 h-2 rounded-full bg-[#00f0ff] animate-ping" />
+            <span className="text-xs font-mono uppercase tracking-wider text-cyan-200">Liquid Glass Architecture</span>
+          </div>
+
+          <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight leading-[1.1] max-w-4xl text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-400 drop-shadow-sm">
+            Elegance cast in frosted light & sensory optics.
+          </h1>
+
+          <p className="mt-6 text-sm sm:text-base md:text-lg text-slate-300 max-w-2xl font-normal leading-relaxed">
+            Welcome to the flagship shopping interface. Experience organic glass surfaces, fluid refraction gradients, and real-time ledger cart arithmetic.
+          </p>
+
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+            <button
+              onClick={() => setActiveTab("catalog")}
+              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#ff007f] to-[#00f0ff] hover:opacity-95 text-white font-bold text-sm flex items-center gap-2 shadow-[0_0_30px_rgba(255,0,127,0.4)] transition-all cursor-pointer hover:scale-105 active:scale-95"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>Explore Catalog</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setActiveTab("cart")}
+              className="px-6 py-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/15 backdrop-blur-xl text-white font-semibold text-sm flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <ShoppingCart className="w-4 h-4 text-cyan-300" />
+              <span>View Cart (\${subtotal})</span>
+            </button>
+          </div>
+
+          {/* Featured Highlights Grid */}
+          <div className="mt-16 sm:mt-24 w-full grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+            <div className="p-6 rounded-3xl bg-white/[0.03] border border-white/10 backdrop-blur-2xl shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]">
+              <div className="w-10 h-10 rounded-2xl bg-[#00f0ff]/10 border border-[#00f0ff]/30 flex items-center justify-center mb-4">
+                <Sparkles className="w-5 h-5 text-[#00f0ff]" />
+              </div>
+              <h3 className="text-base font-bold text-white">Refractive Glass</h3>
+              <p className="mt-2 text-xs text-slate-400 leading-relaxed">Organic translucent panels with backdrop blur, specular highlights, and chromatic edge luminescence.</p>
+            </div>
+            <div className="p-6 rounded-3xl bg-white/[0.03] border border-white/10 backdrop-blur-2xl shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]">
+              <div className="w-10 h-10 rounded-2xl bg-[#ff007f]/10 border border-[#ff007f]/30 flex items-center justify-center mb-4">
+                <ShoppingCart className="w-5 h-5 text-[#ff007f]" />
+              </div>
+              <h3 className="text-base font-bold text-white">Quantum Ledger</h3>
+              <p className="mt-2 text-xs text-slate-400 leading-relaxed">Live multi-item cart arithmetic, dynamic quantity adjustments, and persistent storage synchronization.</p>
+            </div>
+            <div className="p-6 rounded-3xl bg-white/[0.03] border border-white/10 backdrop-blur-2xl shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]">
+              <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center mb-4">
+                <ShieldCheck className="w-5 h-5 text-purple-300" />
+              </div>
+              <h3 className="text-base font-bold text-white">Secure Identity</h3>
+              <p className="mt-2 text-xs text-slate-400 leading-relaxed">Inline credential verification, interactive account validation, and instant session tokens.</p>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* View 2: Catalog Page */}
+      {activeTab === "catalog" && (
+        <main className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+          <div className="flex flex-wrap items-end justify-between gap-4 pb-6 border-b border-white/10 mb-8">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Product Catalog</h2>
+              <p className="text-xs text-slate-400 mt-1">Select premium hardware and apparel to dispatch to your ledger.</p>
+            </div>
+            <div className="text-xs font-mono text-cyan-300 bg-[#00f0ff]/10 border border-[#00f0ff]/20 px-3 py-1.5 rounded-xl">
+              Showing {PRODUCTS.length} Flagship Items
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {PRODUCTS.map((prod) => (
+              <div
+                key={prod.id}
+                className="group p-5 rounded-3xl bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 hover:border-white/20 backdrop-blur-2xl transition-all duration-300 flex flex-col justify-between shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] hover:-translate-y-1"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <span className="text-[10px] font-mono tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-white/10 text-cyan-200 border border-white/10">
+                      {prod.category}
+                    </span>
+                    <span className="text-[10px] font-bold text-[#ff007f] bg-[#ff007f]/10 border border-[#ff007f]/20 px-2 py-0.5 rounded-full">
+                      {prod.badge}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-cyan-200 transition-colors">
+                    {prod.name}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    {prod.tagline}
+                  </p>
+                </div>
+
+                <div className="pt-6 mt-4 border-t border-white/5 flex items-center justify-between">
+                  <span className="text-xl font-black text-white">
+                    \${prod.price}
+                  </span>
+                  <button
+                    onClick={() => addToCart(prod)}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#ff007f] to-[#00f0ff] hover:opacity-90 text-white font-bold text-xs flex items-center gap-1.5 shadow-[0_0_15px_rgba(0,240,255,0.3)] transition-transform active:scale-95 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add to Cart</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </main>
+      )}
+
+      {/* View 3: Cart Page (Quantum Ledger) */}
+      {activeTab === "cart" && (
+        <main className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+          <div className="flex items-center justify-between pb-6 border-b border-white/10 mb-8">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Quantum Ledger Cart</h2>
+              <p className="text-xs text-slate-400 mt-1">Review items, adjust quantities, and calculate final settlement.</p>
+            </div>
+            <button
+              onClick={() => setActiveTab("catalog")}
+              className="text-xs font-semibold text-cyan-300 hover:underline cursor-pointer"
+            >
+              Continue Shopping
+            </button>
+          </div>
+
+          {cart.length === 0 ? (
+            <div className="p-12 rounded-3xl bg-white/[0.02] border border-white/10 backdrop-blur-xl text-center">
+              <ShoppingCart className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-white">Your cart is empty</h3>
+              <p className="text-xs text-slate-400 mt-1">Add items from the catalog to activate the ledger.</p>
+              <button
+                onClick={() => setActiveTab("catalog")}
+                className="mt-6 px-5 py-2.5 rounded-xl bg-[#00f0ff]/20 border border-[#00f0ff]/30 text-cyan-200 font-bold text-xs hover:bg-[#00f0ff]/30 transition-all cursor-pointer"
+              >
+                Go to Catalog
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {cart.map(({ product, quantity }) => (
+                <div
+                  key={product.id}
+                  className="p-4 sm:p-5 rounded-2xl bg-white/[0.04] border border-white/10 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
+                >
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm sm:text-base text-white truncate">{product.name}</h4>
+                    <span className="text-xs text-cyan-300 font-mono">\${product.price} each</span>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-4">
+                    <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-1">
+                      <button
+                        onClick={() => updateQuantity(product.id, -1)}
+                        className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/15 flex items-center justify-center text-slate-300 hover:text-white transition-all cursor-pointer"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="w-8 text-center text-xs font-mono font-bold text-white">
+                        {quantity}
+                      </span>
+                      <button
+                        onClick={() => updateQuantity(product.id, 1)}
+                        className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/15 flex items-center justify-center text-slate-300 hover:text-white transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="text-right min-w-[80px]">
+                      <span className="text-base font-black text-white font-mono">
+                        \${product.price * quantity}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => removeFromCart(product.id)}
+                      className="p-2 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer"
+                      title="Remove item"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Summary Card */}
+              <div className="mt-8 p-6 rounded-3xl bg-gradient-to-b from-white/[0.06] to-white/[0.02] border border-white/15 backdrop-blur-2xl">
+                <div className="flex items-center justify-between text-sm text-slate-300 pb-3 border-b border-white/10">
+                  <span>Cart Items</span>
+                  <span className="font-mono font-bold text-white">{totalItems} units</span>
+                </div>
+                <div className="flex items-center justify-between text-lg sm:text-xl font-black text-white pt-4">
+                  <span>Subtotal</span>
+                  <span className="text-2xl text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-[#00f0ff] font-mono">
+                    \${subtotal}
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => alert("Order successfully dispatched to ledger with subtotal: $" + subtotal)}
+                  className="w-full mt-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#ff007f] via-purple-600 to-[#00f0ff] hover:opacity-95 text-white font-bold text-sm shadow-[0_0_25px_rgba(255,0,127,0.4)] transition-all cursor-pointer hover:scale-[1.01] active:scale-95"
+                >
+                  Proceed to Checkout (\${subtotal})
+                </button>
+              </div>
+            </div>
+          )}
+        </main>
+      )}
+
+      {/* View 4: Login Page */}
+      {activeTab === "login" && (
+        <main className="relative z-10 max-w-md mx-auto px-4 py-16 sm:py-24">
+          <div className="p-8 rounded-3xl bg-white/[0.04] border border-white/10 backdrop-blur-2xl shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-[#00f0ff]/10 border border-[#00f0ff]/30 flex items-center justify-center">
+                <User className="w-5 h-5 text-cyan-300" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Member Login</h3>
+                <p className="text-xs text-slate-400">Access your ledger credentials</p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!loginEmail || !loginPass) {
+                  setLoginMsg("Please provide both email and password.");
+                  return;
+                }
+                setLoginMsg("Access Granted: Welcome back, " + loginEmail);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="user@projectnova.dev"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 box-border"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+                <input
+                  type="password"
+                  value={loginPass}
+                  onChange={(e) => setLoginPass(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 box-border"
+                />
+              </div>
+
+              {loginMsg && (
+                <div className={\`p-3 rounded-xl text-xs flex items-center gap-2 \${
+                  loginMsg.startsWith("Access Granted")
+                    ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+                    : "bg-rose-500/10 text-rose-300 border border-rose-500/30"
+                }\`}>
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{loginMsg}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-[#00f0ff] to-cyan-500 hover:opacity-90 text-slate-950 font-black text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(0,240,255,0.3)] transition-transform active:scale-95 cursor-pointer"
+              >
+                Sign In
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <span className="text-xs text-slate-400">Don't have an account? </span>
+              <button
+                onClick={() => setActiveTab("register")}
+                className="text-xs font-bold text-cyan-300 hover:underline cursor-pointer"
+              >
+                Register here
+              </button>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* View 5: Register Page */}
+      {activeTab === "register" && (
+        <main className="relative z-10 max-w-md mx-auto px-4 py-16 sm:py-24">
+          <div className="p-8 rounded-3xl bg-white/[0.04] border border-white/10 backdrop-blur-2xl shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-[#ff007f]/10 border border-[#ff007f]/30 flex items-center justify-center">
+                <Key className="w-5 h-5 text-[#ff007f]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Create Account</h3>
+                <p className="text-xs text-slate-400">Join the Liquid Glass ecosystem</p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!regName || !regEmail || !regPass) {
+                  setRegMsg("All fields are required.");
+                  return;
+                }
+                setRegMsg("Account registered successfully! You may now sign in.");
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  value={regName}
+                  onChange={(e) => setRegName(e.target.value)}
+                  placeholder="Nova Pilot"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500 box-border"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  placeholder="pilot@projectnova.dev"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500 box-border"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Security Key (Password)</label>
+                <input
+                  type="password"
+                  value={regPass}
+                  onChange={(e) => setRegPass(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-pink-500 box-border"
+                />
+              </div>
+
+              {regMsg && (
+                <div className={\`p-3 rounded-xl text-xs flex items-center gap-2 \${
+                  regMsg.includes("successfully")
+                    ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+                    : "bg-rose-500/10 text-rose-300 border border-rose-500/30"
+                }\`}>
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{regMsg}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-[#ff007f] to-pink-600 hover:opacity-90 text-white font-black text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(255,0,127,0.3)] transition-transform active:scale-95 cursor-pointer"
+              >
+                Create Account
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <span className="text-xs text-slate-400">Already registered? </span>
+              <button
+                onClick={() => setActiveTab("login")}
+                className="text-xs font-bold text-pink-400 hover:underline cursor-pointer"
+              >
+                Sign In
+              </button>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* Footer */}
+      <footer className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 border-t border-white/10 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <span>© ${new Date().getFullYear()} ${project.name}. Liquid Glass Design System.</span>
         <span>Built with ProjectNova AI</span>
       </footer>
     </div>

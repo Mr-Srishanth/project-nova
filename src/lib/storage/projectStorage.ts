@@ -90,6 +90,8 @@ class LocalBrowserStorageAdapter implements IProjectStorageAdapter {
       discoveryMode: input.discoveryMode || "custom",
       targetDeadline: input.targetDeadline?.trim() || undefined,
       constraints: input.constraints?.trim() || undefined,
+      initialPrompt: input.initialPrompt?.trim() || undefined,
+      generationStatus: input.generationStatus || (input.initialPrompt?.trim() ? "not_generated" : undefined),
       createdAt: now,
       updatedAt: now,
       milestones: [],

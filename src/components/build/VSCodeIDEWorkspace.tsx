@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Code2,
   Play,
@@ -8,7 +8,10 @@ import {
   CheckCircle2,
   PanelBottom,
   PanelRight,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { BuildArtifact } from "@/types/artifact";
 import { IDEActivityBar, type ActivityBarTab } from "@/components/build/IDEActivityBar";
 import { IDEFileExplorer } from "@/components/build/IDEFileExplorer";
@@ -20,6 +23,16 @@ import { IDEAIAssistant } from "@/components/build/IDEAIAssistant";
 import { workspaceApiClient } from "@/lib/workspace/workspaceApiClient";
 import { deploymentApiClient, type ServerGitStatus } from "@/lib/deployment/deploymentApiClient";
 import { testStorage } from "@/lib/storage/testStorage";
+import { parseCompilerDiagnostics } from "@/lib/build/diagnosticParser";
+import {
+  AIContinueCodeDiffModal,
+  type AIContinuationProposal,
+} from "@/components/build/AIContinueCodeDiffModal";
+import { AICodeExplainerPanel } from "@/components/build/AICodeExplainerPanel";
+import type { CodeExplanationResult, CodeExplainerMode } from "@/types/codeExplainer";
+import { sanitizeString } from "@/lib/observability/sanitizer";
+import { aiClient } from "@/lib/ai/client";
+import { Sparkles, BookOpen } from "lucide-react";
 
 interface VSCodeIDEWorkspaceProps {
   projectId: string;
@@ -61,15 +74,92 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
   const [editorContents, setEditorContents] = useState<Record<string, string>>({});
   const [dirtyTabs, setDirtyTabs] = useState<Set<string>>(new Set());
 
-  // Bottom Panel State
-  const [bottomOpen, setBottomOpen] = useState(true);
+  // Bottom Panel State (persisted per session)
+  const [bottomOpen, setBottomOpen] = useState<boolean>(() => {
+    try {
+      const saved = sessionStorage.getItem("nova_ide_bottom_open");
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+  const [bottomHeight, setBottomHeight] = useState<number>(() => {
+    try {
+      const saved = sessionStorage.getItem("nova_ide_bottom_height");
+      return saved !== null ? Math.min(550, Math.max(120, JSON.parse(saved))) : 240;
+    } catch {
+      return 240;
+    }
+  });
+  const [isBottomMaximized, setIsBottomMaximized] = useState(false);
+  const isDraggingRef = useRef(false);
+  const dragStartYRef = useRef(0);
+  const dragStartHeightRef = useRef(0);
+
   const [bottomTab, setBottomTab] = useState<BottomPanelTab>("terminal");
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   const [isRunningCommand, setIsRunningCommand] = useState(false);
   const [activeProcessId, setActiveProcessId] = useState<string | null>(null);
 
+  // Sync bottom panel open state to sessionStorage
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("nova_ide_bottom_open", JSON.stringify(bottomOpen));
+    } catch {}
+  }, [bottomOpen]);
+
+  // Sync bottom panel height to sessionStorage
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("nova_ide_bottom_height", JSON.stringify(bottomHeight));
+    } catch {}
+  }, [bottomHeight]);
+
+  // Panel resize drag handler
+  const handleStartResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    dragStartYRef.current = e.clientY;
+    dragStartHeightRef.current = bottomHeight;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const delta = dragStartYRef.current - moveEvent.clientY;
+      const newHeight = Math.min(550, Math.max(120, dragStartHeightRef.current + delta));
+      setBottomHeight(newHeight);
+      setIsBottomMaximized(false);
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
   // AI Assistant Panel
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
+
+  // AI Code Explainer State
+  const [explainerOpen, setExplainerOpen] = useState(false);
+  const [explainerMode, setExplainerMode] = useState<CodeExplainerMode>("eli5");
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [explanationResult, setExplanationResult] = useState<CodeExplanationResult | null>(null);
+  const [explainerError, setExplainerError] = useState<string | null>(null);
+  const [explainerSelection, setExplainerSelection] = useState<{
+    text: string;
+    range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number } | null;
+  } | null>(null);
+  const [highlightLineRange, setHighlightLineRange] = useState<{ startLineNumber: number; endLineNumber?: number } | null>(null);
+
+  // AI Continue Code State
+  const [continuationProposal, setContinuationProposal] = useState<AIContinuationProposal | null>(null);
+  const [isGeneratingContinuation, setIsGeneratingContinuation] = useState(false);
+  const [continuationError, setContinuationError] = useState<string | null>(null);
+  const monacoEditorInstanceRef = useRef<any>(null);
 
   // Diagnostics & Tests
   const [problems, setProblems] = useState<DiagnosticProblem[]>([]);
@@ -78,6 +168,91 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
 
   // Git Status
   const [gitStatus, setGitStatus] = useState<ServerGitStatus | null>(null);
+
+  // Full-Screen IDE Mode State & Refs
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const rootContainerRef = useRef<HTMLDivElement>(null);
+
+  // Broadcast fullscreen state changes to parent layout (AppShell, BuildStudioPage)
+  const notifyFullscreenChange = useCallback((active: boolean) => {
+    setIsFullscreen(active);
+    window.dispatchEvent(
+      new CustomEvent("nova-ide-fullscreen-change", {
+        detail: { isFullscreen: active },
+      })
+    );
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!isFullscreen) {
+      notifyFullscreenChange(true);
+      // Attempt browser Fullscreen API if supported and enabled
+      if (document.fullscreenEnabled && !document.fullscreenElement) {
+        try {
+          if (rootContainerRef.current) {
+            await rootContainerRef.current.requestFullscreen();
+          } else if (document.documentElement) {
+            await document.documentElement.requestFullscreen();
+          }
+        } catch {
+          // Graceful fallback to CSS viewport fullscreen
+        }
+      }
+    } else {
+      notifyFullscreenChange(false);
+      if (document.fullscreenElement) {
+        try {
+          await document.exitFullscreen();
+        } catch {
+          // Ignore exit failures
+        }
+      }
+    }
+  }, [isFullscreen, notifyFullscreenChange]);
+
+  // Handle native browser fullscreen change events (e.g. user pressed Esc in browser)
+  useEffect(() => {
+    const handleNativeFullscreenChange = () => {
+      const isNative = Boolean(document.fullscreenElement);
+      if (!isNative && isFullscreen) {
+        notifyFullscreenChange(false);
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleNativeFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleNativeFullscreenChange);
+    };
+  }, [isFullscreen, notifyFullscreenChange]);
+
+  // Handle keyboard shortcuts: Escape key to exit fullscreen mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        e.preventDefault();
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+        notifyFullscreenChange(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isFullscreen, notifyFullscreenChange]);
+
+  // Clean up fullscreen state on unmount
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("nova-ide-fullscreen-change", {
+          detail: { isFullscreen: false },
+        })
+      );
+    };
+  }, []);
 
   // Initialize tabs when selectedPath changes
   useEffect(() => {
@@ -218,6 +393,16 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
 
     if (res.logs && res.logs.length > 0) {
       setTerminalLogs((prev) => [...prev, ...res.logs]);
+
+      // If command was a TypeScript check or build, parse diagnostics
+      if (command.includes("tsc") || command.includes("build")) {
+        const parsed = parseCompilerDiagnostics(res.logs);
+        if (parsed.length > 0) {
+          setProblems(parsed);
+        } else if (res.exitCode === 0) {
+          setProblems([]);
+        }
+      }
     }
 
     if (res.error) {
@@ -227,6 +412,14 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
         ...prev,
         `[Process exited with code ${res.exitCode !== null ? res.exitCode : 0}]`,
       ]);
+    }
+
+    // Refresh git status if it was a git command or save
+    if (command.startsWith("git")) {
+      try {
+        const git = await deploymentApiClient.getGitStatus(projectId);
+        setGitStatus(git);
+      } catch {}
     }
 
     setIsRunningCommand(false);
@@ -246,8 +439,243 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
     }
   };
 
+  // AI Continue Code Handler
+  const handleTriggerContinueCode = async (explicitContext?: {
+    prefix: string;
+    suffix: string;
+    selectedText: string;
+    position: { lineNumber: number; column: number };
+    selectionRange: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } | null;
+  }) => {
+    if (!selectedPath || isGeneratingContinuation) return;
+
+    let prefix = "";
+    let suffix = "";
+    let selectedText = "";
+    let range: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } | null = null;
+
+    if (explicitContext) {
+      prefix = explicitContext.prefix;
+      suffix = explicitContext.suffix;
+      selectedText = explicitContext.selectedText;
+      range = explicitContext.selectionRange;
+    } else if (monacoEditorInstanceRef.current) {
+      const editor = monacoEditorInstanceRef.current;
+      const model = editor.getModel();
+      if (model) {
+        const pos = editor.getPosition() || { lineNumber: 1, column: 1 };
+        const sel = editor.getSelection();
+        const hasSel =
+          sel &&
+          (sel.startLineNumber !== sel.endLineNumber || sel.startColumn !== sel.endColumn);
+
+        const full = model.getValue();
+        const cursorOffset = model.getOffsetAt(pos);
+
+        selectedText = hasSel ? model.getValueInRange(sel) : "";
+        prefix = hasSel
+          ? full.slice(0, model.getOffsetAt(sel.getStartPosition()))
+          : full.slice(0, cursorOffset);
+        suffix = hasSel
+          ? full.slice(model.getOffsetAt(sel.getEndPosition()))
+          : full.slice(cursorOffset);
+
+        if (hasSel) {
+          range = {
+            startLineNumber: sel.startLineNumber,
+            startColumn: sel.startColumn,
+            endLineNumber: sel.endLineNumber,
+            endColumn: sel.endColumn,
+          };
+        }
+      }
+    } else {
+      // Fallback: cursor at end of document
+      prefix = currentContent;
+      suffix = "";
+    }
+
+    setIsGeneratingContinuation(true);
+    setContinuationError(null);
+
+    // Provide relevant context files (up to 3 other files in project)
+    const contextFiles = artifacts
+      .filter((a) => a.path !== selectedPath && (a.path.endsWith(".ts") || a.path.endsWith(".tsx")))
+      .slice(0, 3)
+      .map((a) => ({
+        path: a.path,
+        content: editorContents[a.path] || a.content || "",
+      }));
+
+    try {
+      const res = await aiClient.continueCode({
+        projectName,
+        filePath: selectedPath,
+        language: inferMonacoLanguage(selectedPath),
+        prefixContent: prefix,
+        suffixContent: suffix,
+        selectedCode: selectedText,
+        contextFiles,
+      });
+
+      const continuation = res.continuation || "";
+      const proposedFullContent = prefix + continuation + suffix;
+
+      setContinuationProposal({
+        filePath: selectedPath,
+        originalText: currentContent,
+        proposedText: proposedFullContent,
+        continuationSnippet: continuation,
+        summary: res.summary || "AI continuation generated",
+        intent: res.intent || "continuation",
+        insertionRange: range,
+      });
+    } catch (err: any) {
+      setContinuationError(err.message || "Failed to generate code continuation");
+      // Still show modal if proposal was open or create empty proposal with error
+      setContinuationProposal({
+        filePath: selectedPath,
+        originalText: currentContent,
+        proposedText: currentContent,
+        continuationSnippet: "",
+        summary: "Continuation generation failed",
+        intent: "continuation",
+        insertionRange: range,
+      });
+    } finally {
+      setIsGeneratingContinuation(false);
+    }
+  };
+
+  const handleAcceptContinuation = () => {
+    if (!continuationProposal || !selectedPath) return;
+
+    handleEditorChange(continuationProposal.proposedText);
+    setContinuationProposal(null);
+    setContinuationError(null);
+
+    setTerminalLogs((prev) => [
+      ...prev,
+      `[AI Continue Code] Applied: ${continuationProposal.summary} (${continuationProposal.filePath})`,
+    ]);
+  };
+
+  const handleRejectContinuation = () => {
+    setContinuationProposal(null);
+    setContinuationError(null);
+  };
+
+  // AI Code Explainer Trigger Handler
+  const handleTriggerExplainCode = async (explicitContext?: {
+    filePath: string;
+    selectedText: string;
+    selectionRange: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } | null;
+  }, overrideMode?: CodeExplainerMode) => {
+    const targetPath = explicitContext?.filePath || selectedPath;
+    if (!targetPath) return;
+
+    const targetMode = overrideMode || explainerMode;
+    const currentCode = editorContents[targetPath] || (targetPath === selectedPath ? currentContent : "");
+    if (!currentCode.trim()) return;
+
+    // Check editor selection if explicitContext wasn't given
+    let selectedText = explicitContext ? explicitContext.selectedText : "";
+    let selectionRange = explicitContext ? explicitContext.selectionRange : null;
+
+    if (!explicitContext && monacoEditorInstanceRef.current && targetPath === selectedPath) {
+      const editor = monacoEditorInstanceRef.current;
+      const model = editor.getModel();
+      const sel = editor.getSelection();
+      if (model && sel && (sel.startLineNumber !== sel.endLineNumber || sel.startColumn !== sel.endColumn)) {
+        selectedText = model.getValueInRange(sel);
+        selectionRange = {
+          startLineNumber: sel.startLineNumber,
+          startColumn: sel.startColumn,
+          endLineNumber: sel.endLineNumber,
+          endColumn: sel.endColumn,
+        };
+      }
+    }
+
+    setExplainerSelection(selectedText ? { text: selectedText, range: selectionRange } : null);
+    setExplainerOpen(true);
+    setIsExplaining(true);
+    setExplainerError(null);
+    setHighlightLineRange(null);
+
+    // Sanitize any potential API secrets before sending to AI
+    const sanitizedContent = sanitizeString(currentCode);
+    const sanitizedSelectedCode = selectedText ? sanitizeString(selectedText) : undefined;
+
+    // Gather project context files
+    const contextFiles = artifacts
+      .filter((a) => a.path !== targetPath && (a.path.endsWith(".ts") || a.path.endsWith(".tsx")))
+      .slice(0, 3)
+      .map((a) => ({
+        path: a.path,
+        content: sanitizeString(editorContents[a.path] || a.content || ""),
+      }));
+
+    try {
+      const res = await aiClient.explainCode({
+        projectName,
+        filePath: targetPath,
+        language: inferMonacoLanguage(targetPath),
+        fileContent: sanitizedContent,
+        selectedCode: sanitizedSelectedCode,
+        mode: targetMode,
+        selectionRange: selectionRange || undefined,
+        contextFiles,
+      });
+
+      setExplanationResult(res);
+    } catch (err: any) {
+      console.error("[Explain Code Error]:", err);
+      setExplainerError(err.message || "Failed to generate AI code explanation.");
+    } finally {
+      setIsExplaining(false);
+    }
+  };
+
+  const handleExplainerModeSwitch = (newMode: CodeExplainerMode) => {
+    setExplainerMode(newMode);
+    handleTriggerExplainCode(
+      explainerSelection
+        ? {
+            filePath: selectedPath || "",
+            selectedText: explainerSelection.text,
+            selectionRange: explainerSelection.range,
+          }
+        : undefined,
+      newMode
+    );
+  };
+
   return (
-    <div className="flex flex-col h-[780px] bg-[#1e1e1e] border-2 border-border rounded-tactile overflow-hidden shadow-hard text-[#cccccc]">
+    <div
+      ref={rootContainerRef}
+      className={cn(
+        "flex flex-col bg-[#1e1e1e] text-[#cccccc] transition-all duration-150",
+        isFullscreen
+          ? "fixed inset-0 z-50 w-screen h-screen h-[100dvh] max-h-screen rounded-none border-0 overflow-hidden shadow-none"
+          : "h-[780px] border-2 border-border rounded-tactile overflow-hidden shadow-hard"
+      )}
+    >
       {/* Top IDE Application Bar */}
       <div className="h-10 bg-[#2d2d2d] border-b border-[#1e1e1e] flex items-center justify-between px-3 text-xs select-none">
         <div className="flex items-center gap-2">
@@ -268,6 +696,32 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
           >
             <Save className="w-3.5 h-3.5" />
             <span>Save</span>
+          </button>
+
+          {/* AI Continue Code Toolbar Button */}
+          <button
+            onClick={() => handleTriggerContinueCode()}
+            disabled={!selectedPath || isGeneratingContinuation}
+            className="flex items-center gap-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded font-bold text-xs disabled:opacity-40 transition-colors shadow-sm"
+            title="AI: Continue Code from cursor or complete current section (Ctrl+K)"
+          >
+            <Sparkles className={`w-3.5 h-3.5 text-emerald-200 ${isGeneratingContinuation ? "animate-spin" : ""}`} />
+            <span>{isGeneratingContinuation ? "Generating…" : "Continue Code"}</span>
+          </button>
+
+          {/* AI Explain Code Toolbar Button */}
+          <button
+            onClick={() => handleTriggerExplainCode()}
+            disabled={!selectedPath || isExplaining}
+            className={`flex items-center gap-1 px-2.5 py-1 text-white rounded font-bold text-xs disabled:opacity-40 transition-colors shadow-sm ${
+              explainerOpen
+                ? "bg-amber-600 hover:bg-amber-500"
+                : "bg-[#3c3c3c] hover:bg-[#4a4a4a]"
+            }`}
+            title="AI: Explain Code (ELI5 & Normal modes)"
+          >
+            <BookOpen className={`w-3.5 h-3.5 text-amber-300 ${isExplaining ? "animate-spin" : ""}`} />
+            <span>{isExplaining ? "Explaining…" : "Explain Code"}</span>
           </button>
 
           <button
@@ -325,6 +779,24 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
           >
             <PanelRight className="w-4 h-4" />
           </button>
+
+          <button
+            onClick={toggleFullscreen}
+            className={cn(
+              "p-1.5 rounded transition-colors ml-0.5",
+              isFullscreen
+                ? "bg-amber-600 hover:bg-amber-500 text-white shadow-sm"
+                : "text-gray-400 hover:text-white hover:bg-[#3c3c3c]"
+            )}
+            title={isFullscreen ? "Restore Viewport (Esc)" : "Expand Full-Screen IDE Mode"}
+            aria-label={isFullscreen ? "Restore Viewport" : "Expand Full-Screen IDE Mode"}
+          >
+            {isFullscreen ? (
+              <Minimize2 className="w-4 h-4" />
+            ) : (
+              <Maximize2 className="w-4 h-4" />
+            )}
+          </button>
         </div>
       </div>
 
@@ -336,6 +808,9 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
           onSelectTab={(tab) => {
             if (tab === "ai") {
               setAiAssistantOpen(true);
+            } else if (tab === "explorer" && activityTab === "explorer") {
+              // Clicking the active explorer icon collapses/toggles the explorer side bar
+              setActivityTab("" as any);
             } else {
               setActivityTab(tab);
             }
@@ -379,6 +854,12 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
                 onChange={handleEditorChange}
                 onSave={handleSaveActive}
                 diagnosticLine={targetDiagnosticLine}
+                highlightLineRange={highlightLineRange}
+                onContinueCode={handleTriggerContinueCode}
+                onExplainCode={(ctx) => handleTriggerExplainCode(ctx)}
+                onMountEditor={(editor) => {
+                  monacoEditorInstanceRef.current = editor;
+                }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-gray-500 space-y-2 select-none">
@@ -391,21 +872,38 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
 
           {/* Bottom Panel: Terminal, Problems, Output, Tests, Git */}
           {bottomOpen && (
-            <div className="h-60 shrink-0">
-              <IDEBottomPanel
-                activeTab={bottomTab}
-                onSelectTab={setBottomTab}
-                terminalLogs={terminalLogs}
-                isRunningCommand={isRunningCommand}
-                onExecuteCommand={handleExecuteTerminalCommand}
-                onClearTerminal={() => setTerminalLogs([])}
-                onKillProcess={handleKillTerminalProcess}
-                problems={problems}
-                onSelectProblem={handleSelectProblem}
-                testSummary={testSummary}
-                onRunTests={() => handleExecuteTerminalCommand("bun run test")}
-                gitStatus={gitStatus}
+            <div
+              style={{ height: isBottomMaximized ? "75%" : `${bottomHeight}px` }}
+              className="shrink-0 flex flex-col relative transition-all duration-75"
+            >
+              {/* Top Resizer Handle */}
+              <div
+                onMouseDown={handleStartResize}
+                className="h-1.5 w-full bg-[#2d2d2d] hover:bg-[#007acc] cursor-row-resize shrink-0 transition-colors"
+                title="Drag to resize panel"
               />
+              <div className="flex-1 overflow-hidden">
+                <IDEBottomPanel
+                  activeTab={bottomTab}
+                  onSelectTab={setBottomTab}
+                  terminalLogs={terminalLogs}
+                  isRunningCommand={isRunningCommand}
+                  onExecuteCommand={handleExecuteTerminalCommand}
+                  onClearTerminal={() => setTerminalLogs([])}
+                  onKillProcess={handleKillTerminalProcess}
+                  problems={problems}
+                  onSelectProblem={handleSelectProblem}
+                  testSummary={testSummary}
+                  onRunTests={() => handleExecuteTerminalCommand("bun run test")}
+                  gitStatus={gitStatus}
+                  onCommitChanges={async (msg) => {
+                    await handleExecuteTerminalCommand(`git commit -m "${msg.replace(/"/g, '\\"')}"`);
+                  }}
+                  onClose={() => setBottomOpen(false)}
+                  onToggleMaximize={() => setIsBottomMaximized(!isBottomMaximized)}
+                  isMaximized={isBottomMaximized}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -419,6 +917,37 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
               selectedFile={activeArtifact}
               onApplyCodeSnippet={(code) => handleEditorChange(code)}
               onClose={() => setAiAssistantOpen(false)}
+            />
+          </div>
+        )}
+
+        {/* AI Code Explainer Drawer/Panel */}
+        {explainerOpen && selectedPath && (
+          <div className="w-96 shrink-0 h-full border-l border-white/10 z-20">
+            <AICodeExplainerPanel
+              explanation={explanationResult}
+              mode={explainerMode}
+              isLoading={isExplaining}
+              errorMessage={explainerError}
+              filePath={selectedPath}
+              isSelectionActive={Boolean(explainerSelection)}
+              onModeChange={handleExplainerModeSwitch}
+              onReexplain={() =>
+                handleTriggerExplainCode(
+                  explainerSelection
+                    ? {
+                        filePath: selectedPath,
+                        selectedText: explainerSelection.text,
+                        selectionRange: explainerSelection.range,
+                      }
+                    : undefined
+                )
+              }
+              onNavigateToLine={(start, end) => setHighlightLineRange({ startLineNumber: start, endLineNumber: end })}
+              onClose={() => {
+                setExplainerOpen(false);
+                setHighlightLineRange(null);
+              }}
             />
           </div>
         )}
@@ -441,6 +970,18 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
           setBottomTab("gitDiff");
         }}
       />
+
+      {/* AI Continue Code Diff & Approval Modal */}
+      {continuationProposal && (
+        <AIContinueCodeDiffModal
+          proposal={continuationProposal}
+          isGenerating={isGeneratingContinuation}
+          errorMessage={continuationError}
+          onAccept={handleAcceptContinuation}
+          onReject={handleRejectContinuation}
+          onRegenerate={() => handleTriggerContinueCode()}
+        />
+      )}
     </div>
   );
 };

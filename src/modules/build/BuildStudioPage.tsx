@@ -49,6 +49,7 @@ import { useActiveProject } from "@/lib/context/ActiveProjectContext";
 import { VSCodeIDEWorkspace } from "@/components/build/VSCodeIDEWorkspace";
 import { InAppPreviewModal } from "@/components/build/InAppPreviewModal";
 import { Code2, LayoutGrid } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export const BuildStudioPage: React.FC = () => {
   const navigate = useNavigate();
@@ -74,6 +75,22 @@ export const BuildStudioPage: React.FC = () => {
 
   // View Mode: Modern VS Code IDE workspace vs. Classic Blueprint Explorer
   const [workspaceMode, setWorkspaceMode] = useState<"ide" | "classic">("ide");
+
+  // Full-Screen IDE Workspace state
+  const [isFullscreenIDE, setIsFullscreenIDE] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isFullscreen: boolean }>;
+      if (customEvent.detail && typeof customEvent.detail.isFullscreen === "boolean") {
+        setIsFullscreenIDE(customEvent.detail.isFullscreen);
+      }
+    };
+    window.addEventListener("nova-ide-fullscreen-change", handleFullscreenChange);
+    return () => {
+      window.removeEventListener("nova-ide-fullscreen-change", handleFullscreenChange);
+    };
+  }, []);
 
   // Parse canonical Blueprint Directory Model
   const blueprintModel = useMemo(() => {
@@ -633,57 +650,59 @@ Implement the real functional requirements of the project. If this is a car game
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-fadeIn">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2 py-0.5 text-[11px] font-mono font-bold bg-[#70C84B]/20 text-[#153A52] rounded-tactile border border-border">
-              BLUEPRINT SYNCHRONIZED
-            </span>
-            <span className="text-xs text-foreground-muted">Build Studio & Code Generation</span>
+    <div className={cn("space-y-6 max-w-7xl mx-auto animate-fadeIn", isFullscreenIDE && "space-y-0 max-w-none m-0 p-0")}>
+      {/* Header — Hidden in Full-Screen IDE mode */}
+      {!isFullscreenIDE && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="px-2 py-0.5 text-[11px] font-mono font-bold bg-[#70C84B]/20 text-[#153A52] rounded-tactile border border-border">
+                BLUEPRINT SYNCHRONIZED
+              </span>
+              <span className="text-xs text-foreground-muted">Build Studio & Code Generation</span>
+            </div>
+            <h1 className="font-display font-extrabold text-2xl text-foreground">
+              Build Studio
+            </h1>
+            <p className="text-sm text-foreground-muted">
+              Directory structure synchronized with Blueprint Studio. Synthesize code, inspect diffs, and approve artifacts.
+            </p>
           </div>
-          <h1 className="font-display font-extrabold text-2xl text-foreground">
-            Build Studio
-          </h1>
-          <p className="text-sm text-foreground-muted">
-            Directory structure synchronized with Blueprint Studio. Synthesize code, inspect diffs, and approve artifacts.
-          </p>
-        </div>
 
-        {/* Global Active Project Indicator & Workspace Toggle */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
-          <CompactProjectIndicator />
+          {/* Global Active Project Indicator & Workspace Toggle */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+            <CompactProjectIndicator />
 
-          <div className="flex bg-surface rounded-tactile border-2 border-border p-0.5 shadow-hard-xs">
-            <button
-              onClick={() => setWorkspaceMode("ide")}
-              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded transition-colors ${
-                workspaceMode === "ide"
-                  ? "bg-[#153A52] text-white"
-                  : "text-foreground-muted hover:text-foreground"
-              }`}
-            >
-              <Code2 className="w-3.5 h-3.5" />
-              <span>VS Code IDE</span>
-            </button>
-            <button
-              onClick={() => setWorkspaceMode("classic")}
-              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded transition-colors ${
-                workspaceMode === "classic"
-                  ? "bg-[#153A52] text-white"
-                  : "text-foreground-muted hover:text-foreground"
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Blueprint Explorer</span>
-            </button>
+            <div className="flex bg-surface rounded-tactile border-2 border-border p-0.5 shadow-hard-xs">
+              <button
+                onClick={() => setWorkspaceMode("ide")}
+                className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded transition-colors ${
+                  workspaceMode === "ide"
+                    ? "bg-[#153A52] text-white"
+                    : "text-foreground-muted hover:text-foreground"
+                }`}
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                <span>VS Code IDE</span>
+              </button>
+              <button
+                onClick={() => setWorkspaceMode("classic")}
+                className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded transition-colors ${
+                  workspaceMode === "classic"
+                    ? "bg-[#153A52] text-white"
+                    : "text-foreground-muted hover:text-foreground"
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Blueprint Explorer</span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Blueprint Status & Overview Card */}
-      {selectedProject && (
+      {/* Blueprint Status & Overview Card — Hidden in Full-Screen IDE mode */}
+      {!isFullscreenIDE && selectedProject && (
         <Card className="bg-surface shadow-hard border-2 border-border p-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
@@ -775,8 +794,8 @@ Implement the real functional requirements of the project. If this is a car game
         </Card>
       )}
 
-      {/* Notice if Blueprint structure is incomplete or truncated */}
-      {blueprintModel.isTruncatedOrExample && selectedProject?.blueprint && (
+      {/* Notice if Blueprint structure is incomplete or truncated — Hidden in Full-Screen IDE mode */}
+      {!isFullscreenIDE && blueprintModel.isTruncatedOrExample && selectedProject?.blueprint && (
         <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-tactile flex items-start justify-between gap-3 shadow-hard-sm">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
@@ -809,8 +828,8 @@ Implement the real functional requirements of the project. If this is a car game
         </div>
       )}
 
-      {/* Error notification banner */}
-      {errorBanner && (
+      {/* Error notification banner — Hidden in Full-Screen IDE mode */}
+      {!isFullscreenIDE && errorBanner && (
         <div className="p-3 bg-red-50 border-2 border-red-500 rounded-tactile flex items-start gap-2 shadow-hard-sm animate-fadeIn">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
           <div className="flex-1 text-xs text-red-800 font-mono leading-relaxed">
@@ -895,18 +914,20 @@ Implement the real functional requirements of the project. If this is a car game
         </div>
       )}
 
-      {/* Target Project Environment & Secret Health Panel (Placed after code workspace) */}
-      <div id="target-project-env-section">
-        {selectedProject && targetEnvReport && (
-          <EnvConfigPanel
-            report={targetEnvReport}
-            projectId={selectedProject.id}
-            onOpenSettings={() => navigate("/settings")}
-            onUpdateTargetVariable={handleUpdateTargetVariable}
-            onApplyProviderMapping={handleApplyProviderMapping}
-          />
-        )}
-      </div>
+      {/* Target Project Environment & Secret Health Panel (Placed after code workspace; hidden in Full-Screen IDE mode) */}
+      {!isFullscreenIDE && (
+        <div id="target-project-env-section">
+          {selectedProject && targetEnvReport && (
+            <EnvConfigPanel
+              report={targetEnvReport}
+              projectId={selectedProject.id}
+              onOpenSettings={() => navigate("/settings")}
+              onUpdateTargetVariable={handleUpdateTargetVariable}
+              onApplyProviderMapping={handleApplyProviderMapping}
+            />
+          )}
+        </div>
+      )}
 
       {/* In-App Live Preview Modal (Does not navigate to UI Studio; preserves IDE editor state) */}
       {selectedProject && (

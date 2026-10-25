@@ -1,6 +1,6 @@
 export type ViewportMode = "desktop" | "tablet" | "mobile";
 
-export type ApplicationArchetype = "car_game" | "game" | "dashboard" | "website" | "backend" | "general_app";
+export type ApplicationArchetype = "car_game" | "game" | "dashboard" | "website" | "ecommerce" | "backend" | "general_app";
 
 export interface PreviewSecurityOptions {
   allowExternalCdn?: boolean;

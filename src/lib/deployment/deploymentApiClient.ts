@@ -28,11 +28,11 @@ export interface ServerCredentialStatus {
 const GATEWAY_URL = GATEWAY_ORIGIN;
 
 export const deploymentApiClient = {
-  async getGitStatus(): Promise<ServerGitStatus> {
+  async getGitStatus(projectId?: string): Promise<ServerGitStatus> {
     const res = await fetch(`${GATEWAY_URL}/api/repo/git-status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ projectId }),
     });
     if (!res.ok) {
       throw new Error(`Failed to inspect git status: HTTP ${res.status}`);

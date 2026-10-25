@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { useActiveProject } from "@/lib/context/ActiveProjectContext";
@@ -114,48 +114,83 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     { name: "Visual Workflows", href: "/workflows", icon: <GitFork className="w-3.5 h-3.5 text-[#70C84B]" /> },
   ];
 
-  return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background">
-      {/* Mobile Header Bar */}
-      <div className="md:hidden flex items-center justify-between px-4 py-3 bg-surface border-b-2 border-border sticky top-0 z-50">
-        <Link to="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-tactile-sm bg-primary border-2 border-border flex items-center justify-center font-display font-bold text-foreground shadow-hard-sm">
-            N
-          </div>
-          <span className="font-display font-bold text-lg text-foreground tracking-tight">ProjectNova AI</span>
-        </Link>
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-1.5 border-2 border-border rounded-tactile-sm bg-surface text-foreground shadow-hard-sm"
-          aria-label="Toggle Navigation Menu"
-        >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      </div>
+  const isStudioRoute = location.pathname.startsWith("/ui-studio");
 
-      {/* Sidebar for Desktop */}
-      <aside
-        className={cn(
-          "w-64 bg-surface border-r-2 border-border flex flex-col shrink-0 md:sticky md:top-0 md:h-screen z-40",
-          mobileMenuOpen ? "block fixed inset-0 top-14 bg-surface" : "hidden md:flex"
-        )}
-      >
-        {/* Logo and Brand */}
-        <div className="p-5 border-b-2 border-border hidden md:flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-tactile bg-primary border-2 border-border flex items-center justify-center font-display font-bold text-lg text-foreground shadow-hard-sm">
+  // Allow child views (e.g. Build Studio Full-Screen IDE mode) to request fullscreen layout
+  const [isFullscreenWorkspace, setIsFullscreenWorkspace] = useState(false);
+
+  // Automatically reset window scroll position to top whenever route changes
+  useEffect(() => {
+    if (!isStudioRoute) {
+      window.scrollTo(0, 0);
+    }
+  }, [location.pathname, location.search, isStudioRoute]);
+
+  useEffect(() => {
+    const handleWorkspaceFullscreenChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isFullscreen: boolean }>;
+      if (customEvent.detail && typeof customEvent.detail.isFullscreen === "boolean") {
+        setIsFullscreenWorkspace(customEvent.detail.isFullscreen);
+      }
+    };
+    window.addEventListener("nova-ide-fullscreen-change", handleWorkspaceFullscreenChange);
+    return () => {
+      window.removeEventListener("nova-ide-fullscreen-change", handleWorkspaceFullscreenChange);
+    };
+  }, []);
+
+  const isFullscreen = isFullscreenWorkspace;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col md:flex-row bg-background",
+        isStudioRoute || isFullscreen ? "h-screen max-h-screen overflow-hidden" : "min-h-screen"
+      )}
+    >
+      {/* Mobile Header Bar */}
+      {!isFullscreen && (
+        <div className="md:hidden flex items-center justify-between px-4 py-3 bg-surface border-b-2 border-border sticky top-0 z-50 shrink-0">
+          <Link to="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-tactile-sm bg-primary border-2 border-border flex items-center justify-center font-display font-bold text-foreground shadow-hard-sm">
               N
             </div>
-            <div>
-              <span className="font-display font-bold text-lg text-foreground block leading-tight">
-                ProjectNova
-              </span>
-              <span className="text-[10px] font-mono font-medium text-foreground-muted uppercase tracking-wider block">
-                Autonomous Project OS
-              </span>
-            </div>
+            <span className="font-display font-bold text-lg text-foreground tracking-tight">ProjectNova AI</span>
           </Link>
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-1.5 border-2 border-border rounded-tactile-sm bg-surface text-foreground shadow-hard-sm"
+            aria-label="Toggle Navigation Menu"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
+      )}
+
+      {/* Sidebar for Desktop */}
+      {!isFullscreen && (
+        <aside
+          className={cn(
+            "w-full md:w-64 bg-surface border-r-2 border-border flex flex-col justify-between shrink-0 z-40",
+            mobileMenuOpen ? "block" : "hidden md:flex"
+          )}
+        >
+          {/* Logo and Brand */}
+          <div className="p-5 border-b-2 border-border hidden md:flex items-center justify-between">
+            <Link to="/" className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-tactile bg-primary border-2 border-border flex items-center justify-center font-display font-bold text-lg text-foreground shadow-hard-sm">
+                N
+              </div>
+              <div>
+                <span className="font-display font-bold text-lg text-foreground block leading-tight">
+                  ProjectNova
+                </span>
+                <span className="text-[10px] font-mono font-medium text-foreground-muted uppercase tracking-wider block">
+                  Autonomous Project OS
+                </span>
+              </div>
+            </Link>
+          </div>
 
         {/* 6 Primary Navigation Links */}
         <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
@@ -241,66 +276,76 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           </p>
         </div>
       </aside>
+      )}
 
       {/* Main Content Area */}
-      <main className="flex-1 min-w-0 flex flex-col min-h-screen">
-        <header className="hidden md:flex items-center justify-between px-8 py-3.5 bg-surface border-b-2 border-border">
-          <div className="flex items-center gap-3 text-xs font-mono text-foreground-muted">
-            <div className="flex items-center gap-2">
-              <Link to="/" className="hover:text-foreground transition-colors">OS</Link>
-              <span>/</span>
-              <span className="text-foreground font-semibold">
-                {location.pathname === "/"
-                  ? "Home"
-                  : location.pathname.startsWith("/projects")
-                  ? "Projects"
-                  : location.pathname.startsWith("/build") || location.pathname.startsWith("/ui-studio")
-                  ? "Build Studio"
-                  : location.pathname.startsWith("/testing") || location.pathname.startsWith("/quality")
-                  ? "Test & Fix"
-                  : location.pathname.startsWith("/deployments") || location.pathname.startsWith("/release")
-                  ? "Deploy & Monitor"
-                  : location.pathname.startsWith("/settings")
-                  ? "Settings"
-                  : location.pathname.substring(1)}
-              </span>
-            </div>
+      <main
+        className={cn(
+          "flex-1 min-w-0 flex flex-col",
+          isStudioRoute || isFullscreen
+            ? "h-full max-h-screen overflow-hidden min-h-0"
+            : "min-h-screen"
+        )}
+      >
+        {!isFullscreen && (
+          <header className="hidden md:flex items-center justify-between px-8 py-3.5 bg-surface border-b-2 border-border shrink-0">
+            <div className="flex items-center gap-3 text-xs font-mono text-foreground-muted">
+              <div className="flex items-center gap-2">
+                <Link to="/" className="hover:text-foreground transition-colors">OS</Link>
+                <span>/</span>
+                <span className="text-foreground font-semibold">
+                  {location.pathname === "/"
+                    ? "Home"
+                    : location.pathname.startsWith("/projects")
+                    ? "Projects"
+                    : location.pathname.startsWith("/build") || location.pathname.startsWith("/ui-studio")
+                    ? "Build Studio"
+                    : location.pathname.startsWith("/testing") || location.pathname.startsWith("/quality")
+                    ? "Test & Fix"
+                    : location.pathname.startsWith("/deployments") || location.pathname.startsWith("/release")
+                    ? "Deploy & Monitor"
+                    : location.pathname.startsWith("/settings")
+                    ? "Settings"
+                    : location.pathname.substring(1)}
+                </span>
+              </div>
 
-            {/* Global Compact Active Project Pill */}
-            {activeProject ? (
-              <div className="flex items-center gap-2 pl-3 border-l-2 border-border/60">
-                <span className="text-[10px] uppercase font-bold text-foreground-muted/80">Active:</span>
-                <Link
-                  to={`/?project=${activeProject.id}`}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface border border-border rounded-tactile hover:bg-muted text-foreground transition-colors shadow-hard-xs max-w-[200px]"
-                  title={`Active Project: ${activeProject.name} (Click to manage on Home)`}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                  <span className="font-display font-bold text-[11px] truncate">{activeProject.name}</span>
-                </Link>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 pl-3 border-l-2 border-border/60">
-                <Link
-                  to="/"
-                  className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 rounded-tactile text-amber-700 text-[10px] font-bold hover:bg-amber-500/20 transition-colors"
-                >
-                  <span>No Active Project</span>
-                </Link>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary border border-border" />
-            <span className="text-xs font-mono font-medium text-foreground">Local Session Active</span>
-          </div>
-        </header>
+              {/* Global Compact Active Project Pill */}
+              {activeProject ? (
+                <div className="flex items-center gap-2 pl-3 border-l-2 border-border/60">
+                  <span className="text-[10px] uppercase font-bold text-foreground-muted/80">Active:</span>
+                  <Link
+                    to={`/?project=${activeProject.id}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface border border-border rounded-tactile hover:bg-muted text-foreground transition-colors shadow-hard-xs max-w-[200px]"
+                    title={`Active Project: ${activeProject.name} (Click to manage on Home)`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="font-display font-bold text-[11px] truncate">{activeProject.name}</span>
+                  </Link>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 pl-3 border-l-2 border-border/60">
+                  <Link
+                    to="/"
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 rounded-tactile text-amber-700 text-[10px] font-bold hover:bg-amber-500/20 transition-colors"
+                  >
+                    <span>No Active Project</span>
+                  </Link>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary border border-border" />
+              <span className="text-xs font-mono font-medium text-foreground">Local Session Active</span>
+            </div>
+          </header>
+        )}
 
         <div
           className={cn(
-            "flex-1 w-full",
-            location.pathname.startsWith("/ui-studio")
-              ? "p-0 max-w-none h-[calc(100vh-49px)] overflow-hidden flex flex-col"
+            "flex-1 w-full min-h-0",
+            isStudioRoute || isFullscreen
+              ? "p-0 max-w-none h-full overflow-hidden flex flex-col"
               : "p-4 md:p-8 max-w-7xl mx-auto"
           )}
         >

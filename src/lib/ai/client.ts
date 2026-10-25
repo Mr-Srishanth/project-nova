@@ -113,6 +113,46 @@ export class AIGatewayClient {
     });
   }
 
+  async continueCode(input: {
+    projectName: string;
+    filePath: string;
+    language?: string;
+    prefixContent: string;
+    suffixContent?: string;
+    selectedCode?: string;
+    contextFiles?: Array<{ path: string; content: string }>;
+  }): Promise<{
+    continuation: string;
+    summary: string;
+    intent: "continuation" | "next_step";
+  }> {
+    return this.request("/continue-code", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
+
+  async explainCode(input: {
+    projectName: string;
+    filePath: string;
+    language?: string;
+    fileContent: string;
+    selectedCode?: string;
+    mode: "eli5" | "normal";
+    selectionRange?: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } | null;
+    contextFiles?: Array<{ path: string; content: string }>;
+  }): Promise<import("@/types/codeExplainer").CodeExplanationResult> {
+    return this.request("/explain-code", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
+
   async proposeTestPlan(input: {
     projectName: string;
     blueprintContext?: string;

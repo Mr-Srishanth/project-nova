@@ -1,32 +1,67 @@
-# React + TypeScript + Vite
+# ProjectNova AI
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+An independent, hybrid-autonomous AI Project Operating System.
 
-Currently, two official plugins are available:
+Takes projects from idea through discovery, architectural blueprinting, execution milestones, quality verification, and deployment.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## Architecture & Technology Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Framework:** React 18.3 + TypeScript + Vite 5.4
+- **Styling & Design System:** Tailwind CSS with tactile ivory/navy tokens, hard offset shadows (`4px 4px 0 #153A52`), and responsive layouts
+- **State & Storage:** Typed domain models (`Project`, `Blueprint`, `Milestone`, `Task`) backed by an isolated browser storage adapter with graceful error handling
+- **Visual Topology:** Pure responsive SVG Architecture Flow Diagram (`ArchitectureDiagram.tsx`)
+- **Testing:** Vitest + Happy-DOM
 
-## Expanding the Oxlint configuration
+---
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Getting Started
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+### Prerequisites
+
+- Node.js >= 18 or Bun runtime
+- Git
+
+### Installation
+
+```bash
+bun install
+# or: npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+### Running Locally
+
+```bash
+bun run dev
+# or: npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### Running Test Suite
+
+```bash
+bun run test
+# or: npm run test
+```
+
+### Production Build
+
+```bash
+bun run build
+# or: npm run build
+```
+
+---
+
+## Phase 2 Core Deliverables
+
+- [x] Clean initialization with zero SkillNova runtime coupling
+- [x] Locked tactile Ivory/Navy/Green visual system & design tokens
+- [x] Responsive Application Shell & Navigation
+- [x] Overview dashboard powered by live project storage
+- [x] Project Discovery & manual / template creation flow
+- [x] Project Workspace with metadata editor & milestone task tracker
+- [x] Blueprint Studio with interactive SVG system topology diagram & DDL generator
+- [x] Automated unit test suite for local storage persistence

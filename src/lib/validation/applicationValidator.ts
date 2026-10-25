@@ -162,6 +162,30 @@ export function validateApplicationTarget(
       detail: hasFooter ? "Footer present" : "Footer omitted",
       critical: false,
     });
+  } else if (archetype === "ecommerce") {
+    const appContent = artifactMap.get("src/app/App.tsx") || artifactMap.get("src/App.tsx") || "";
+    const hasProducts = appContent.includes("product") || appContent.includes("Product") || appContent.includes("price") || appContent.includes("catalog");
+    const hasCart = appContent.includes("cart") || appContent.includes("Cart") || appContent.includes("quantity") || appContent.includes("subtotal");
+    const hasMultiView = appContent.includes("activeTab") || appContent.includes("setActiveTab") || appContent.includes("home") && appContent.includes("catalog");
+
+    archetypeChecks.push({
+      name: "Product Catalog",
+      passed: hasProducts,
+      detail: hasProducts ? "Product items with prices detected" : "No product catalog found",
+      critical: true,
+    });
+    archetypeChecks.push({
+      name: "Cart & Ledger Arithmetic",
+      passed: hasCart,
+      detail: hasCart ? "Interactive shopping cart state detected" : "Missing cart calculations",
+      critical: true,
+    });
+    archetypeChecks.push({
+      name: "Multi-View Storefront Navigation",
+      passed: hasMultiView,
+      detail: hasMultiView ? "Storefront views (Home, Catalog, Cart, etc.) detected" : "Missing multi-view navigation",
+      critical: false,
+    });
   } else {
     archetypeChecks.push({
       name: "General React Application",

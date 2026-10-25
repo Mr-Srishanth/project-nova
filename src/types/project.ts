@@ -38,6 +38,9 @@ export interface Project {
   // Phase 4 Extensions (backward compatible)
   stageStates?: StageState[];
   roadmapMilestones?: RoadmapMilestone[];
+  // Single-Prompt Project Creation Handoff
+  initialPrompt?: string;
+  generationStatus?: "not_generated" | "generating" | "generated" | "failed";
 }
 
 export interface CreateProjectInput {
@@ -49,6 +52,8 @@ export interface CreateProjectInput {
   discoveryMode?: DiscoveryMode;
   targetDeadline?: string;
   constraints?: string;
+  initialPrompt?: string;
+  generationStatus?: "not_generated" | "generating" | "generated" | "failed";
 }
 
 export interface UpdateProjectInput {
@@ -64,4 +69,6 @@ export interface UpdateProjectInput {
   milestones?: Milestone[];
   stageStates?: StageState[];
   roadmapMilestones?: RoadmapMilestone[];
+  initialPrompt?: string;
+  generationStatus?: "not_generated" | "generating" | "generated" | "failed";
 }

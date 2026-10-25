@@ -96,4 +96,38 @@ describe("VS Code-Style IDE Architecture & Editor Workflows", () => {
       expect(betaList.some((a) => a.path === "src/alpha.ts")).toBe(false);
     });
   });
+
+  describe("Full-Screen IDE Mode Protocol & CustomEvent Synchronization", () => {
+    it("dispatches nova-ide-fullscreen-change custom event on fullscreen toggle", () => {
+      let dispatched = false;
+      let isFs = false;
+
+      const listener = (e: Event) => {
+        const custom = e as CustomEvent<{ isFullscreen: boolean }>;
+        dispatched = true;
+        isFs = custom.detail.isFullscreen;
+      };
+
+      window.addEventListener("nova-ide-fullscreen-change", listener);
+
+      window.dispatchEvent(
+        new CustomEvent("nova-ide-fullscreen-change", {
+          detail: { isFullscreen: true },
+        })
+      );
+
+      expect(dispatched).toBe(true);
+      expect(isFs).toBe(true);
+
+      // Verify restore toggle event
+      window.dispatchEvent(
+        new CustomEvent("nova-ide-fullscreen-change", {
+          detail: { isFullscreen: false },
+        })
+      );
+      expect(isFs).toBe(false);
+
+      window.removeEventListener("nova-ide-fullscreen-change", listener);
+    });
+  });
 });

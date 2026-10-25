@@ -1,3 +1,4 @@
+@import "../modules/uiStudio/uiStudio.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -59,3 +60,4 @@ body {
     transform: none !important;
   }
 }
+

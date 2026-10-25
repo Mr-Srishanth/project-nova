@@ -169,7 +169,7 @@ export const UIStudioPage: React.FC = () => {
   // Operation history is still recorded to storage by the AI/inspector pipelines
   // (status + verification updates); the History panel itself was removed from
   // the layout, so only the setter is kept here.
-  const [, setHistoryEntries] = useState<OperationHistoryEntry[]>([]);
+  const [historyEntries, setHistoryEntries] = useState<OperationHistoryEntry[]>([]);
   const [notifications, setNotifications] = useState<UIStudioNotification[]>([]);
 
   const pushNotification = useCallback(
@@ -440,6 +440,10 @@ export const UIStudioPage: React.FC = () => {
         setRightTab("inspector");
         setRightPanelOpen(true);
         if (window.innerWidth < 768) setMobileTab("inspector");
+        return;
+      }
+      if (type === "PREVIEW_NAVIGATE" && typeof e.data.route === "string") {
+        setSelectedRoute(e.data.route);
         return;
       }
       if (typeof type === "string" && type.startsWith("PREVIEW_")) {
@@ -775,9 +779,120 @@ export const UIStudioPage: React.FC = () => {
 
       if (modeSnapshot === "auto" && plan.items.length > 0) {
         await executeApply(plan, operationId);
+        // Mark project as successfully generated
+        if (selectedProject.generationStatus !== "generated") {
+          await projectStorage.update(selectedProject.id, { generationStatus: "generated" });
+          setProjects((prev) =>
+            prev.map((p) => (p.id === selectedProject.id ? { ...p, generationStatus: "generated" } : p))
+          );
+        }
       }
     } catch (err: any) {
       pushNotification("error", "AI Operation Failed", err.message || "Failed to formulate edit plan");
+      if (selectedProject.generationStatus === "generating") {
+        await projectStorage.update(selectedProject.id, { generationStatus: "failed" });
+        setProjects((prev) =>
+          prev.map((p) => (p.id === selectedProject.id ? { ...p, generationStatus: "failed" } : p))
+        );
+      }
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
+  // Dedicated single-prompt initial project generation handler
+  const handleGenerateInitialProject = async () => {
+    if (!selectedProject || !selectedProjectId || isAiProcessing) return;
+    const initialPrompt = selectedProject.initialPrompt || selectedProject.objective || selectedProject.description;
+    if (!initialPrompt) return;
+
+    // Synchronous in-flight guard
+    setIsAiProcessing(true);
+    await projectStorage.update(selectedProject.id, { generationStatus: "generating" });
+    setProjects((prev) =>
+      prev.map((p) => (p.id === selectedProject.id ? { ...p, generationStatus: "generating" } : p))
+    );
+
+    const operationId = `op_init_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    setActiveOperationId(operationId);
+
+    const userMsg: AIConversationMessage = {
+      id: `msg_user_${Date.now()}`,
+      operationId,
+      role: "user",
+      mode: "auto",
+      content: initialPrompt,
+      timestamp: new Date().toISOString(),
+    };
+    const nextHistory = [...conversationHistory, userMsg];
+    setConversationHistory(nextHistory);
+    persistChatMessages(nextHistory);
+
+    try {
+      const plan = await planAIEdits({
+        operationId,
+        projectId: selectedProject.id,
+        projectName: selectedProject.name,
+        userPrompt: initialPrompt,
+        mode: "auto",
+        artifacts: savedArtifacts,
+        activeFilePath: selectedFilePath,
+        errorContext: previewSnap.error?.message || null,
+      });
+
+      if (selectedProjectId !== selectedProject.id) return;
+
+      const snapshots: Record<string, string> = {};
+      for (const item of plan.items) {
+        const existing = savedArtifacts.find((a) => a.path === item.filePath);
+        if (existing?.content) snapshots[item.filePath] = existing.content;
+      }
+
+      const historyEntry: OperationHistoryEntry = {
+        id: operationId,
+        timestamp: new Date().toISOString(),
+        projectId: selectedProject.id,
+        projectName: selectedProject.name,
+        userPrompt: initialPrompt,
+        mode: "auto",
+        affectedFiles: plan.items.map((i) => i.filePath),
+        summary: plan.summary,
+        diffExplanation: plan.items[0]?.diffExplanation,
+        status: "applied",
+        items: plan.items,
+        advisoryText: plan.advisoryText,
+        previousFileSnapshots: snapshots,
+      };
+      await uiStudioHistoryStorage.save(historyEntry);
+      setHistoryEntries((prev) => [historyEntry, ...prev]);
+      setActivePlan(plan);
+
+      const assistantMsg: AIConversationMessage = {
+        id: `msg_ai_${Date.now()}`,
+        operationId,
+        role: "assistant",
+        mode: "auto",
+        content: plan.advisoryText || plan.summary,
+        timestamp: new Date().toISOString(),
+        plan,
+      };
+      const finalHistory = [...nextHistory, assistantMsg];
+      setConversationHistory(finalHistory);
+      persistChatMessages(finalHistory);
+
+      if (plan.items.length > 0) {
+        await executeApply(plan, operationId);
+        await projectStorage.update(selectedProject.id, { generationStatus: "generated" });
+        setProjects((prev) =>
+          prev.map((p) => (p.id === selectedProject.id ? { ...p, generationStatus: "generated" } : p))
+        );
+      }
+    } catch (err: any) {
+      pushNotification("error", "Initial Generation Failed", err.message || "Failed to formulate initial code");
+      await projectStorage.update(selectedProject.id, { generationStatus: "failed" });
+      setProjects((prev) =>
+        prev.map((p) => (p.id === selectedProject.id ? { ...p, generationStatus: "failed" } : p))
+      );
     } finally {
       setIsAiProcessing(false);
     }
@@ -1057,7 +1172,7 @@ export const UIStudioPage: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex-1 min-h-0 overflow-auto bg-[#08090c] p-3 flex items-start justify-center">
+              <div className="flex-1 min-h-0 overflow-auto overscroll-contain bg-[#08090c] p-3 flex items-start justify-center">
                 {!isRunning ? (
                   <div className="text-center p-8 space-y-3 max-w-sm m-auto">
                     <Square className="w-8 h-8 text-zinc-700 mx-auto" />
@@ -1163,7 +1278,7 @@ export const UIStudioPage: React.FC = () => {
               ))}
             </div>
 
-            <div className="flex-1 min-h-0 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
               {rightTab === "ai" && (
                 <AIAssistantPanel
                   prompt={aiPrompt}
@@ -1195,23 +1310,33 @@ export const UIStudioPage: React.FC = () => {
                   activeOperationId={activeOperationId}
                   runtimeError={previewSnap.error?.message || null}
                   onNewSession={handleStartNewChatSession}
+                  pendingCreationPrompt={
+                    selectedProject?.generationStatus === "not_generated" ||
+                    selectedProject?.generationStatus === "failed" ||
+                    (Boolean(selectedProject?.initialPrompt) && (!historyEntries.length || selectedProject?.generationStatus !== "generated"))
+                      ? selectedProject?.initialPrompt || null
+                      : null
+                  }
+                  onGenerateInitialProject={handleGenerateInitialProject}
                 />
               )}
               {rightTab === "inspector" && (
-                <ElementInspector
-                  selectedElement={selectedElement}
-                  inspectMode={inspectMode}
-                  setInspectMode={setInspectMode}
-                  identifiedSourceFile={identified?.artifact ? identified.artifact.path : null}
-                  onApplyLiveStyle={handleApplyLiveStyle}
-                  onSaveStyleToSource={handleSaveStyleToSource}
-                  recentChanges={inspectorChanges}
-                  onUndoChange={handleUndoInspectorChange}
-                  onRedoChange={handleRedoInspectorChange}
-                  canUndo={inspectorChanges.length > 0}
-                  canRedo={inspectorRedoStack.length > 0}
-                  viewport={viewport === "small" ? "mobile" : viewport}
-                />
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                  <ElementInspector
+                    selectedElement={selectedElement}
+                    inspectMode={inspectMode}
+                    setInspectMode={setInspectMode}
+                    identifiedSourceFile={identified?.artifact ? identified.artifact.path : null}
+                    onApplyLiveStyle={handleApplyLiveStyle}
+                    onSaveStyleToSource={handleSaveStyleToSource}
+                    recentChanges={inspectorChanges}
+                    onUndoChange={handleUndoInspectorChange}
+                    onRedoChange={handleRedoInspectorChange}
+                    canUndo={inspectorChanges.length > 0}
+                    canRedo={inspectorRedoStack.length > 0}
+                    viewport={viewport === "small" ? "mobile" : viewport}
+                  />
+                </div>
               )}
             </div>
           </aside>

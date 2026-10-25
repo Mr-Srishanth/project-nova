@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Terminal as TerminalIcon,
   AlertTriangle,
@@ -7,6 +7,9 @@ import {
   FileDiff,
   CheckCircle2,
   Trash2,
+  X,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 export type BottomPanelTab = "terminal" | "problems" | "output" | "tests" | "gitDiff";
@@ -39,6 +42,9 @@ interface IDEBottomPanelProps {
     changedFiles: { path: string; status: string; isSecret: boolean }[];
   } | null;
   onCommitChanges?: (message: string) => void;
+  onClose?: () => void;
+  onToggleMaximize?: () => void;
+  isMaximized?: boolean;
 }
 
 export const IDEBottomPanel: React.FC<IDEBottomPanelProps> = ({
@@ -55,15 +61,52 @@ export const IDEBottomPanel: React.FC<IDEBottomPanelProps> = ({
   onRunTests,
   gitStatus,
   onCommitChanges,
+  onClose,
+  onToggleMaximize,
+  isMaximized,
 }) => {
   const [commandInput, setCommandInput] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const terminalScrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll terminal on new logs
+  useEffect(() => {
+    if (activeTab === "terminal" && terminalScrollRef.current) {
+      terminalScrollRef.current.scrollTop = terminalScrollRef.current.scrollHeight;
+    }
+  }, [terminalLogs, activeTab]);
 
   const handleCommandSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!commandInput.trim() || isRunningCommand) return;
-    onExecuteCommand(commandInput.trim());
+    const cmd = commandInput.trim();
+    setHistory((prev) => [...prev, cmd]);
+    setHistoryIndex(-1);
+    onExecuteCommand(cmd);
     setCommandInput("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (history.length === 0) return;
+      const nextIdx = historyIndex === -1 ? history.length - 1 : Math.max(0, historyIndex - 1);
+      setHistoryIndex(nextIdx);
+      setCommandInput(history[nextIdx] || "");
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (historyIndex === -1) return;
+      const nextIdx = historyIndex + 1;
+      if (nextIdx >= history.length) {
+        setHistoryIndex(-1);
+        setCommandInput("");
+      } else {
+        setHistoryIndex(nextIdx);
+        setCommandInput(history[nextIdx] || "");
+      }
+    }
   };
 
   const handleCommitSubmit = (e: React.FormEvent) => {
@@ -159,6 +202,28 @@ export const IDEBottomPanel: React.FC<IDEBottomPanelProps> = ({
               Run All Tests
             </button>
           )}
+
+          {/* Maximize / Restore Toggle */}
+          {onToggleMaximize && (
+            <button
+              onClick={onToggleMaximize}
+              className="p-1 hover:bg-[#2d2d2d] rounded text-gray-400 hover:text-white"
+              title={isMaximized ? "Restore Panel Size" : "Maximize Panel Size"}
+            >
+              {isMaximized ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+            </button>
+          )}
+
+          {/* Close Panel Toggle */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1 hover:bg-[#2d2d2d] rounded text-gray-400 hover:text-white"
+              title="Close Panel"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -167,7 +232,7 @@ export const IDEBottomPanel: React.FC<IDEBottomPanelProps> = ({
         {/* 1. Terminal View */}
         {activeTab === "terminal" && (
           <div className="flex flex-col h-full bg-[#181818] p-2 font-mono text-[11px]">
-            <div className="flex-1 overflow-y-auto space-y-1 select-text">
+            <div ref={terminalScrollRef} className="flex-1 overflow-y-auto space-y-1 select-text">
               <div className="text-gray-500 mb-2">
                 ProjectNova Sandboxed Runner • Allowed: bun, npm, vite, tsc, git, python, pytest • Output capped
               </div>
@@ -189,6 +254,7 @@ export const IDEBottomPanel: React.FC<IDEBottomPanelProps> = ({
                 type="text"
                 value={commandInput}
                 onChange={(e) => setCommandInput(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="bun run build | npm test | git status..."
                 disabled={isRunningCommand}
                 className="flex-1 bg-transparent border-none text-white focus:outline-none text-xs font-mono"

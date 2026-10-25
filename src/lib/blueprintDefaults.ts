@@ -20,6 +20,144 @@ export function generateDefaultBlueprint(
     technologies,
   });
 
+  // Archetype 0: Liquid Glass E-Commerce & Shopping Experience
+  if (archetype === "ecommerce") {
+    return {
+      id: generateId("bp"),
+      projectId,
+      title: `${projectName} E-Commerce Architecture Blueprint`,
+      overview: `Liquid Glass E-Commerce Architecture for ${projectName}. Features organic translucent glass aesthetic (#0f0c20 midnight canvas, fluid ambient glow blobs, frosted glass panels with backdrop blur), interactive 5-view navigation (Home, Catalog, Cart, Login, Register), live Quantum Ledger cart arithmetic, and local persistence.`,
+      problemStatement: `Shoppers need a tactile, responsive digital storefront with real-time shopping cart totals, effortless multi-view navigation, and secure credential handling without generic administrative dashboard clutter.`,
+      targetUsers: ["Online Shoppers", "Luxury Hardware Customers", "E-Commerce Operators"],
+      realWorldUseCase: `Flagship shopping interface featuring live 6-product catalog, instant add-to-cart operations, quantity controls with dynamic subtotal recalculation ($2148 -> $3447 -> $2598), and authenticated ledger checkout.`,
+      features: {
+        mvp: [
+          "5-View responsive storefront (Home, Catalog, Cart, Login, Register)",
+          "Liquid Glass aesthetic (#0f0c20 canvas, drifting glow blobs, frosted panels)",
+          "Interactive catalog with 6 products and instant Add to Cart",
+          "Quantum Ledger Cart with real-time quantity adjustments and subtotal recalculation",
+          "Interactive Login & Registration forms with validation feedback",
+        ],
+        important: [
+          "Local storage shopping cart synchronization",
+          "Responsive navigation header with live cart item counter",
+          "Product badges, categories, and sensory micro-interactions",
+        ],
+        advanced: [
+          "Multi-currency support and encrypted checkout settlement",
+          "Wishlist management and biometric authentication passkey support",
+        ],
+        optional: [
+          "Product reviews and real-time inventory tracking",
+        ],
+      },
+      techStack: [
+        { layer: "Presentation & Views", tech: "React 18 / Tailwind CSS", why: "High performance rendering of fluid glass panels and reactive UI states." },
+        { layer: "State & Persistence", tech: "Quantum Ledger State / localStorage", why: "Instant client-side subtotal arithmetic and session persistence across views." },
+        { layer: "Icons & Visuals", tech: "Lucide React", why: "Clean vector iconography for shopping, carts, security, and credentials." },
+      ],
+      architecture: {
+        summary: "Decoupled multi-view shopping architecture with centralized state ledger and persistent local storage synchronization.",
+        nodes: [
+          { id: "storefront_nav", label: "Glass Navigation Header", kind: "frontend", detail: "Active view switcher & live cart counter" },
+          { id: "catalog_view", label: "Product Catalog", kind: "frontend", detail: "6-item luxury product showcase" },
+          { id: "ledger_cart", label: "Quantum Ledger Cart", kind: "frontend", detail: "Quantity controls & dynamic subtotal math" },
+          { id: "auth_views", label: "Identity & Credential Portal", kind: "frontend", detail: "Login and Registration validation" },
+          { id: "cart_storage", label: "Local Ledger Storage", kind: "storage", detail: "Browser-backed cart item synchronization" },
+        ],
+        edges: [
+          { from: "catalog_view", to: "ledger_cart", label: "Add Item Action" },
+          { from: "ledger_cart", to: "cart_storage", label: "State Sync" },
+          { from: "storefront_nav", to: "catalog_view", label: "Route Change" },
+          { from: "storefront_nav", to: "ledger_cart", label: "Route Change" },
+          { from: "storefront_nav", to: "auth_views", label: "Route Change" },
+        ],
+      },
+      database: {
+        entities: [
+          {
+            name: "products",
+            purpose: "Catalog items and specifications",
+            fields: [
+              { name: "id", type: "varchar", key: "PK", note: "Product ID" },
+              { name: "name", type: "varchar", note: "Product name" },
+              { name: "price", type: "numeric", note: "Unit price" },
+              { name: "category", type: "varchar", note: "Department" },
+            ],
+          },
+          {
+            name: "cart_items",
+            purpose: "Active ledger shopping cart line items",
+            fields: [
+              { name: "item_id", type: "uuid", key: "PK", note: "Cart item unique ID" },
+              { name: "product_id", type: "varchar", note: "Reference to product" },
+              { name: "quantity", type: "integer", note: "Item count" },
+            ],
+          },
+        ],
+        relationships: [
+          "cart_items.product_id -> products.id (many-to-one)",
+        ],
+        sql: `-- Storefront & Ledger Schema
+CREATE TABLE IF NOT EXISTS products (
+  id VARCHAR PRIMARY KEY,
+  name VARCHAR NOT NULL,
+  price NUMERIC(10, 2) NOT NULL,
+  category VARCHAR NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS cart_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id VARCHAR REFERENCES products(id),
+  quantity INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+`,
+      },
+      api: [
+        { method: "GET", route: "/api/v1/products", purpose: "Fetch catalog items" },
+        { method: "GET", route: "/api/v1/cart", purpose: "Retrieve active cart ledger" },
+        { method: "POST", route: "/api/v1/cart", purpose: "Update item quantity in cart" },
+        { method: "POST", route: "/api/v1/auth/login", purpose: "Authenticate user credentials" },
+      ],
+      uiScreens: [
+        { name: "Home Showcase", purpose: "Hero banner, liquid glass feature highlights, and call to action", elements: ["HeroBanner", "FeatureCards", "QuickNav"] },
+        { name: "Catalog Grid", purpose: "6-item product cards with pricing and Add to Cart triggers", elements: ["ProductGrid", "CategoryFilter", "AddToCartButton"] },
+        { name: "Quantum Ledger Cart", purpose: "Quantity increments, line-item removal, and live subtotal calculation", elements: ["CartItemList", "QuantityControls", "SubtotalSummary", "CheckoutButton"] },
+        { name: "Auth Portal", purpose: "Login and registration credential forms with feedback alerts", elements: ["LoginForm", "RegisterForm", "ValidationAlert"] },
+      ],
+      folderStructure: `${safeName}/
+├── index.html
+├── vite.config.ts
+├── package.json
+├── tsconfig.json
+├── .env.example
+├── .gitignore
+├── README.md
+├── src/
+│   ├── main.tsx
+│   ├── index.css
+│   └── app/
+│       ├── App.tsx
+│       └── router.tsx`,
+      testingStrategy: [
+        "Unit test cart arithmetic for additions, quantity adjustments, and subtotals",
+        "Verify authentication form input validation",
+        "Verify 5-view tab switching without state loss",
+      ],
+      deploymentStrategy: [
+        "Vite production build generating self-contained static HTML5 bundle",
+        "High-performance edge CDN distribution",
+      ],
+      futureImprovements: [
+        "Stripe payment gateway integration",
+        "Customer order tracking and digital receipt email dispatch",
+      ],
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
   // Archetype 1: Car Racing / Vehicle Arcade Game
   if (archetype === "car_game") {
     return {

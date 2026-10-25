@@ -75,6 +75,9 @@ export const DiscoveryPage: React.FC = () => {
 
   // Check AI Gateway Connectivity on Mount
   useEffect(() => {
+    // Ensure Discover page starts at top of viewport
+    window.scrollTo(0, 0);
+
     aiClient
       .checkHealth()
       .then((h) => setGatewayConfigured(h.hasKey))
@@ -316,6 +319,8 @@ export const DiscoveryPage: React.FC = () => {
         .map((t) => t.trim())
         .filter(Boolean);
 
+      const creationPrompt = (rawIdea || objective || description).trim();
+
       const created = await projectStorage.create({
         name,
         description,
@@ -324,6 +329,8 @@ export const DiscoveryPage: React.FC = () => {
         technologies,
         discoveryMode: "custom",
         constraints,
+        initialPrompt: creationPrompt,
+        generationStatus: "not_generated",
       });
 
       if (autoGenerateBlueprint) {
@@ -341,8 +348,8 @@ export const DiscoveryPage: React.FC = () => {
       // Clear session after successful creation
       sessionStorage.removeItem(DISCOVERY_SESSION_STORAGE_KEY);
 
-      // Navigate to Blueprint Studio with the confirmed project selected
-      navigate(`/blueprint`);
+      // Navigate to UI Studio directly so the user can generate with 1 click
+      navigate(`/ui-studio?project=${created.id}`);
     } catch (err: any) {
       setError(err.message || "Failed to create project and blueprint");
     } finally {

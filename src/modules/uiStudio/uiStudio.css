@@ -1,0 +1,351 @@
+/**
+ * uiStudio.css — Styles for the UI Studio workspace.
+ *
+ * Uses the existing design system CSS variables for consistency.
+ * Provides layout, editor, preview, and explorer-specific styling.
+ */
+
+/* =========================================================================
+   Layout
+   ========================================================================= */
+
+.studio-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+.studio-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--background);
+}
+
+.studio-toolbar-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-right: auto;
+}
+
+.studio-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.studio-sidebar {
+  width: 100%;
+  height: 100%;
+  border-right: 1px solid var(--border);
+  background-color: var(--background);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.studio-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* =========================================================================
+   Editor Panel
+   ========================================================================= */
+
+.studio-editor-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--muted);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.studio-editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  transition: background-color 150ms, color 150ms;
+  user-select: none;
+}
+
+.studio-editor-tab:hover {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+.studio-editor-tab[data-active="true"] {
+  background-color: var(--background);
+  color: var(--foreground);
+  border-bottom: 2px solid var(--primary);
+  margin-bottom: -1px;
+}
+
+.studio-editor-tab .dirty-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--chart-5);
+  flex-shrink: 0;
+}
+
+.studio-editor-area {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.studio-code-editor {
+  flex: 1;
+  width: 100%;
+  padding: 12px 16px;
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  border: none;
+  outline: none;
+  resize: none;
+  background-color: var(--background);
+  color: var(--foreground);
+  overflow: auto;
+  white-space: pre;
+  word-wrap: normal;
+}
+
+.studio-code-editor::selection {
+  background-color: oklch(0.488 0.243 264.376 / 25%);
+}
+
+.studio-code-editor:focus {
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.studio-editor-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted-foreground);
+  background-color: var(--muted);
+  gap: 12px;
+}
+
+.studio-editor-status .status-left,
+.studio-editor-status .status-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* =========================================================================
+   Preview Panel
+   ========================================================================= */
+
+.studio-preview-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background-color: var(--background);
+  overflow: hidden;
+}
+
+.studio-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--muted);
+}
+
+.studio-preview-header h4 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+}
+
+.studio-preview-iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background-color: white;
+}
+
+.studio-preview-empty,
+.studio-preview-loading,
+.studio-preview-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  gap: 12px;
+}
+
+.studio-preview-empty {
+  color: var(--muted-foreground);
+}
+
+.studio-preview-loading {
+  color: var(--muted-foreground);
+}
+
+.studio-preview-error {
+  color: oklch(0.577 0.245 27.325);
+  background-color: oklch(0.577 0.245 27.325 / 5%);
+}
+
+.studio-preview-error pre {
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 12px;
+  font-family: monospace;
+  text-align: left;
+  padding: 12px;
+  border-radius: 6px;
+  background: oklch(0.577 0.245 27.325 / 8%);
+}
+
+/* =========================================================================
+   Explorer
+   ========================================================================= */
+
+.studio-explorer {
+  overflow: hidden;
+}
+
+.studio-explorer-item {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* =========================================================================
+   Save status badge
+   ========================================================================= */
+
+.studio-save-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.studio-save-badge[data-status="idle"] {
+  color: var(--muted-foreground);
+}
+
+.studio-save-badge[data-status="saving"] {
+  color: oklch(0.828 0.189 84.429);
+  background-color: oklch(0.828 0.189 84.429 / 10%);
+}
+
+.studio-save-badge[data-status="saved"] {
+  color: oklch(0.6 0.118 184.704);
+  background-color: oklch(0.6 0.118 184.704 / 10%);
+}
+
+.studio-save-badge[data-status="error"] {
+  color: oklch(0.577 0.245 27.325);
+  background-color: oklch(0.577 0.245 27.325 / 10%);
+}
+
+/* =========================================================================
+   Responsive — mobile / narrow viewports
+   ========================================================================= */
+
+@media (max-width: 768px) {
+  .studio-body {
+    flex-direction: column;
+  }
+
+  .studio-sidebar {
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: 180px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .studio-preview-wrapper {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* =========================================================================
+   Animations
+   ========================================================================= */
+
+@keyframes studio-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.studio-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: studio-spin 0.8s linear infinite;
+}
+
+/* =========================================================================
+   Scrollbar styling (non-Firefox)
+   ========================================================================= */
+
+.studio-root ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.studio-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.studio-root ::-webkit-scrollbar-thumb {
+  background-color: oklch(0.554 0.046 257.417 / 30%);
+  border-radius: 4px;
+}
+
+.studio-root ::-webkit-scrollbar-thumb:hover {
+  background-color: oklch(0.554 0.046 257.417 / 50%);
+}

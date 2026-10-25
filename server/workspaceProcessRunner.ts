@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, execSync, type ChildProcess } from "node:child_process";
 
 // Allowed workspaces root
 const WORKSPACES_ROOT = path.resolve(process.cwd(), "workspaces");
@@ -70,6 +70,20 @@ export function getProjectWorkspacePath(projectId: string): string {
 
   if (!fs.existsSync(projectDir)) {
     fs.mkdirSync(projectDir, { recursive: true });
+  }
+
+  // Ensure workspace is initialized with its own isolated git repository
+  const gitDir = path.join(projectDir, ".git");
+  if (!fs.existsSync(gitDir)) {
+    try {
+      execSync("git init -b main", { cwd: projectDir, stdio: "ignore" });
+    } catch {
+      try {
+        execSync("git init", { cwd: projectDir, stdio: "ignore" });
+      } catch {
+        // Non-critical if git CLI fails
+      }
+    }
   }
 
   return projectDir;

@@ -10,6 +10,30 @@ interface MonacoCodeEditorProps {
   onChange: (newValue: string) => void;
   onSave?: () => void;
   diagnosticLine?: number;
+  highlightLineRange?: { startLineNumber: number; endLineNumber?: number } | null;
+  onContinueCode?: (context: {
+    prefix: string;
+    suffix: string;
+    selectedText: string;
+    position: { lineNumber: number; column: number };
+    selectionRange: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } | null;
+  }) => void;
+  onExplainCode?: (context: {
+    filePath: string;
+    selectedText: string;
+    selectionRange: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } | null;
+  }) => void;
+  onMountEditor?: (editor: any, monaco: any) => void;
 }
 
 export function inferMonacoLanguage(path: string): string {
@@ -52,12 +76,89 @@ export const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
   onChange,
   onSave,
   diagnosticLine,
+  highlightLineRange,
+  onContinueCode,
+  onExplainCode,
+  onMountEditor,
 }) => {
   const editorRef = React.useRef<any>(null);
+  const decorationsRef = React.useRef<any[]>([]);
   const lang = language || inferMonacoLanguage(filePath);
+
+  const triggerExplainCode = React.useCallback(() => {
+    if (!onExplainCode || !editorRef.current) return;
+    const editor = editorRef.current;
+    const model = editor.getModel();
+    if (!model) return;
+
+    const selection = editor.getSelection();
+    const hasSelection =
+      selection &&
+      (selection.startLineNumber !== selection.endLineNumber ||
+        selection.startColumn !== selection.endColumn);
+    const selectedText = hasSelection ? model.getValueInRange(selection) : "";
+
+    onExplainCode({
+      filePath,
+      selectedText,
+      selectionRange: hasSelection
+        ? {
+            startLineNumber: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLineNumber: selection.endLineNumber,
+            endColumn: selection.endColumn,
+          }
+        : null,
+    });
+  }, [onExplainCode, filePath]);
+
+  const triggerContinueCode = React.useCallback(() => {
+    if (!onContinueCode || !editorRef.current) return;
+    const editor = editorRef.current;
+    const model = editor.getModel();
+    if (!model) return;
+
+    const position = editor.getPosition() || { lineNumber: 1, column: 1 };
+    const selection = editor.getSelection();
+    const hasSelection =
+      selection &&
+      (selection.startLineNumber !== selection.endLineNumber ||
+        selection.startColumn !== selection.endColumn);
+
+    const fullText = model.getValue();
+    const cursorOffset = model.getOffsetAt(position);
+    const selectedText = hasSelection ? model.getValueInRange(selection) : "";
+
+    const prefix = hasSelection
+      ? fullText.slice(0, model.getOffsetAt(selection.getStartPosition()))
+      : fullText.slice(0, cursorOffset);
+
+    const suffix = hasSelection
+      ? fullText.slice(model.getOffsetAt(selection.getEndPosition()))
+      : fullText.slice(cursorOffset);
+
+    onContinueCode({
+      prefix,
+      suffix,
+      selectedText,
+      position,
+      selectionRange: hasSelection
+        ? {
+            startLineNumber: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLineNumber: selection.endLineNumber,
+            endColumn: selection.endColumn,
+          }
+        : null,
+    });
+  }, [onContinueCode]);
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+
+    if (onMountEditor) {
+      onMountEditor(editor, monaco);
+    }
 
     // Register Ctrl+S / Cmd+S shortcut inside Monaco
     if (onSave) {
@@ -65,6 +166,34 @@ export const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
         onSave();
       });
     }
+
+    // Register Ctrl+K or Alt+\ for AI Continue Code
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+      triggerContinueCode();
+    });
+
+    // Register Right-Click / Context Menu Action: "AI → Continue Code"
+    editor.addAction({
+      id: "projectnova-ai-continue-code",
+      label: "AI: Continue Code (Ctrl+K)",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK],
+      contextMenuGroupId: "1_modification",
+      contextMenuOrder: 1.5,
+      run: () => {
+        triggerContinueCode();
+      },
+    });
+
+    // Register Right-Click / Context Menu Action: "AI → Explain Code"
+    editor.addAction({
+      id: "projectnova-ai-explain-code",
+      label: "AI: Explain Code",
+      contextMenuGroupId: "1_modification",
+      contextMenuOrder: 1.6,
+      run: () => {
+        triggerExplainCode();
+      },
+    });
 
     // If an initial diagnostic line was passed, reveal it
     if (diagnosticLine && diagnosticLine > 0) {
@@ -79,6 +208,36 @@ export const MonacoCodeEditor: React.FC<MonacoCodeEditorProps> = ({
       editorRef.current.setPosition({ lineNumber: diagnosticLine, column: 1 });
     }
   }, [diagnosticLine]);
+
+  // Handle active line range highlighting from code explainer navigation
+  React.useEffect(() => {
+    if (!editorRef.current) return;
+    const editor = editorRef.current;
+    if (highlightLineRange && highlightLineRange.startLineNumber > 0) {
+      const start = highlightLineRange.startLineNumber;
+      const end = highlightLineRange.endLineNumber || start;
+      editor.revealLineInCenter(start);
+      editor.setPosition({ lineNumber: start, column: 1 });
+
+      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, [
+        {
+          range: {
+            startLineNumber: start,
+            startColumn: 1,
+            endLineNumber: end,
+            endColumn: 1000,
+          },
+          options: {
+            isWholeLine: true,
+            className: "bg-emerald-500/20 border-l-2 border-emerald-400",
+            glyphMarginClassName: "bg-emerald-400",
+          },
+        },
+      ]);
+    } else if (decorationsRef.current.length > 0) {
+      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
+    }
+  }, [highlightLineRange]);
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-[#1e1e1e]">
