@@ -55,6 +55,7 @@ export const ProjectBrainPanel: React.FC<ProjectBrainPanelProps> = ({ projectId,
   const [newSource, setNewSource] = useState<ProjectMemorySource>("user");
   const [newTags, setNewTags] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const loadMemories = async () => {
     setLoading(true);
@@ -95,9 +96,13 @@ export const ProjectBrainPanel: React.FC<ProjectBrainPanelProps> = ({ projectId,
   };
 
   const handleDelete = async (id: string, title: string) => {
-    const confirm = window.confirm(`Remove memory "${title}" from Project Brain?`);
-    if (!confirm) return;
-
+    // Two-click in-app confirm: window.confirm popups are unreliable
+    // (blocked/dismissed in some browsers), which made Delete appear dead.
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      return;
+    }
+    setConfirmDeleteId(null);
     await brainStorage.delete(id);
     await loadMemories();
   };
@@ -300,10 +305,10 @@ export const ProjectBrainPanel: React.FC<ProjectBrainPanelProps> = ({ projectId,
                       </div>
                       <button
                         onClick={() => handleDelete(item.id, item.title)}
-                        className="text-foreground-muted hover:text-danger p-1 rounded transition-colors"
-                        title="Delete memory"
+                        className={confirmDeleteId === item.id ? "text-danger font-bold px-2 py-1 rounded bg-danger/10 transition-colors" : "text-foreground-muted hover:text-danger p-1 rounded transition-colors"}
+                        title={confirmDeleteId === item.id ? "Click again to confirm delete" : "Delete memory"}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        {confirmDeleteId === item.id ? <span className="text-[11px]">Confirm delete?</span> : <Trash2 className="w-3.5 h-3.5" />}
                       </button>
                     </div>
 
