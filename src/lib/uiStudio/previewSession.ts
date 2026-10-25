@@ -99,8 +99,12 @@ export class PreviewSessionController {
       sendPing: deps.sendPing,
       setTimeoutFn: deps.setTimeoutFn || ((fn, ms) => setTimeout(fn, ms)),
       clearTimeoutFn: deps.clearTimeoutFn || ((h) => clearTimeout(h)),
-      softTimeoutMs: deps.softTimeoutMs ?? 8000,
-      hardTimeoutMs: deps.hardTimeoutMs ?? 15000,
+      // First-open CDN loads (React + Tailwind from unpkg/CDN) routinely
+      // exceed the old 8s/15s limits on slow networks, so the first preview
+      // timed out and only a manual Retry (with CDN cached) worked. Give
+      // cold loads room: soft probe at 20s, hard failure at 45s.
+      softTimeoutMs: deps.softTimeoutMs ?? 20000,
+      hardTimeoutMs: deps.hardTimeoutMs ?? 45000,
       onChange: deps.onChange,
     };
   }

@@ -147,6 +147,10 @@ export const UIStudioPage: React.FC = () => {
   const currentDocRef = useRef<PreviewDoc | null>(null);
   currentDocRef.current = currentDoc;
   const lastBuildKeyRef = useRef<string>("");
+  // One automatic rebuild per project+revision when a preview times out
+  // (cold CDN load). This is what users previously had to do by hand with
+  // Retry Build on first open; the retry is capped so it can never loop.
+  const timeoutRetryKeyRef = useRef<string>("");
 
   // --- Inspector ----------------------------------------------------------------
   const [inspectMode, setInspectMode] = useState(false);
@@ -429,6 +433,20 @@ export const UIStudioPage: React.FC = () => {
       }
     }
   }, [previewSnap]);
+
+  // Auto-retry once on a preview timeout (cold CDN load on first open).
+  useEffect(() => {
+    if (previewSnap.stage !== "load_timeout" && previewSnap.stage !== "mount_timeout") return;
+    if (!selectedProjectId || !projState) return;
+    const key = `${selectedProjectId}|${projState.revision}`;
+    if (timeoutRetryKeyRef.current === key) return;
+    timeoutRetryKeyRef.current = key;
+    const timer = setTimeout(() => {
+      lastBuildKeyRef.current = "";
+      startBuild();
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [previewSnap, selectedProjectId, projState, startBuild]);
 
   // --- Iframe message bridge ----------------------------------------------------------------
   useEffect(() => {

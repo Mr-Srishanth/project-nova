@@ -32,6 +32,11 @@ export function bundleTsxForPreview(sourceCode: string): string {
   });
 
   // Handle named imports from react
+  code = code.replace(/import\s+\*\s+as\s+([A-Za-z0-9_$]+)\s+from\s+['"]react['"];?/g, (_match, ns) => {
+    return `const ${ns} = window.React;`;
+  });
+
+  // Handle named imports from react
   code = code.replace(/import\s+\{([^}]+)\}\s+from\s+['"]react['"];?/g, (_match, hooks) => {
     const hookList = hooks
       .split(",")
@@ -71,6 +76,12 @@ const ${iconName} = (props) => {
   // Strip other local or package imports (e.g. ./index.css, ./router, etc.)
   code = code.replace(/import\s+[^;]+from\s+['"][^'"]+['"];?/g, "");
   code = code.replace(/import\s+['"][^'"]+['"];?/g, "");
+
+  // Strip re-exports (export ... from '...') — the preview bundles a single
+  // entry file, so re-exported modules are not available; leaving the
+  // statement would break Sucrase's import transform / the classic script.
+  code = code.replace(/export\s+\{[^}]+\}\s+from\s+['"][^'"]+['"];?/g, "");
+  code = code.replace(/export\s+\*\s+from\s+['"][^'"]+['"];?/g, "");
 
   // 2. Clean ES module exports so definitions remain in global scope
   // Ensure App is captured if defined as App or default export, or any component named Main/Root
@@ -459,11 +470,49 @@ export function buildTargetProjectPreviewHtml(
     } else {
       const bundled = bundleTsxForPreview(entryCode);
       try {
+        // "imports" is essential here: bundleTsxForPreview strips the common
+        // import forms, but any import it misses (namespace imports, aliased
+        // imports, new package imports, re-exports) would otherwise survive
+        // into a classic <script> and fail at parse time with
+        // "Cannot use import statement outside a module" — a SyntaxError the
+        // preview's try/catch cannot catch, so the whole preview dies and
+        // the AI proposal is marked Verification Failed. Converting imports
+        // to require() calls with a shim below makes every import form safe.
         const compiled = transform(bundled, {
-          transforms: ["jsx", "typescript"],
+          transforms: ["jsx", "typescript", "imports"],
           jsxRuntime: "classic",
         });
-        transpiledApp = compiled.code;
+        let code = compiled.code;
+        // Safety net: if any import statement still survives (e.g. inside a
+        // string-free edge case), drop that line rather than shipping a
+        // script that cannot parse at all.
+        if (/^\s*import\s/m.test(code)) {
+          diagnostics.push("Preview warning: an unhandled import statement was dropped so the preview can parse.");
+          code = code.replace(/^\s*import\s+[^;\n]+;\s*$/gm, "");
+        }
+        transpiledApp = `
+  // Preview require shim: Sucrase "imports" output calls require()/exports.
+  const __previewExports = {};
+  const __previewModule = { exports: __previewExports };
+  const __previewMockIcon = function MockIcon(props) {
+    return window.React.createElement("svg", { ...props, xmlns: "http://www.w3.org/2000/svg", width: props.size || 24, height: props.size || 24, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", className: props.className || "" }, window.React.createElement("circle", { cx: 12, cy: 12, r: 10 }));
+  };
+  const __previewRequire = function (specifier) {
+    if (specifier === "react") return Object.assign({ default: window.React, __esModule: true }, window.React);
+    if (specifier === "react-dom" || specifier === "react-dom/client") return Object.assign({ default: window.ReactDOM, __esModule: true }, window.ReactDOM);
+    if (specifier === "lucide-react") {
+      return new Proxy({}, { get: function (t, prop) { if (prop === "__esModule") return true; if (prop === "default") return __previewMockIcon; return __previewMockIcon; } });
+    }
+    // Unknown package: return a mock that behaves as a component/function so
+    // the app still renders instead of throwing at import time.
+    return new Proxy({ __esModule: true, default: __previewMockIcon }, { get: function (t, prop) { if (prop in t) return t[prop]; return __previewMockIcon; } });
+  };
+  const require = __previewRequire;
+  const exports = __previewExports;
+  const module = __previewModule;
+${code}
+  if (__previewExports.default || __previewExports.App) { window.App = __previewExports.default || __previewExports.App; }
+`;
       } catch (sucraseErr: any) {
         diagnostics.push(`Transpilation error: ${sucraseErr.message}`);
         transpiledApp = "";
