@@ -27,7 +27,10 @@ export function bundleTsxForPreview(sourceCode: string): string {
       .split(",")
       .map((h: string) => h.trim())
       .filter(Boolean);
-    const hookDeclarations = hookList.map((h: string) => `const ${h} = window.React.${h};`).join("\n");
+    const hookDeclarations = hookList.map((h: string) => {
+      const parts = h.split(/\s+as\s+/);
+      return parts.length === 2 ? `const ${parts[1]} = window.React.${parts[0]};` : `const ${h} = window.React.${h};`;
+    }).join("\n");
     return `const React = window.React;\n${hookDeclarations}`;
   });
 
@@ -41,8 +44,15 @@ export function bundleTsxForPreview(sourceCode: string): string {
     const hookList = hooks
       .split(",")
       .map((h: string) => h.trim())
-      .filter(Boolean);
-    return hookList.map((h: string) => `const ${h} = window.React.${h};`).join("\n");
+      .filter(Boolean)
+      .map((h: string) => {
+        // "useState as useStateHook" -> local name useStateHook, React prop useState
+        const parts = h.split(/\s+as\s+/);
+        return parts.length === 2
+          ? `const ${parts[1]} = window.React.${parts[0]};`
+          : `const ${h} = window.React.${h};`;
+      });
+    return hookList.join("\n");
   });
 
   // Handle lucide-react imports
@@ -52,8 +62,11 @@ export function bundleTsxForPreview(sourceCode: string): string {
       .map((i: string) => i.trim())
       .filter(Boolean);
     return iconList
-      .map(
-        (iconName: string) => `
+      .map((iconSpec: string) => {
+        // "Trash2 as TrashIcon" -> local name TrashIcon
+        const parts = iconSpec.split(/\s+as\s+/);
+        const iconName = parts.length === 2 ? parts[1] : parts[0];
+        return `
 const ${iconName} = (props) => {
   return window.React.createElement("svg", {
     ...props,
@@ -69,6 +82,7 @@ const ${iconName} = (props) => {
     className: props.className || ""
   }, window.React.createElement("circle", { cx: 12, cy: 12, r: 10 }));
 };`
+        }
       )
       .join("\n");
   });
@@ -468,30 +482,42 @@ export function buildTargetProjectPreviewHtml(
     if (multiModuleCompiled) {
       transpiledApp = multiModuleCompiled;
     } else {
-      const bundled = bundleTsxForPreview(entryCode);
+      // Do NOT run bundleTsxForPreview here: its regex import stripping
+      // breaks aliased imports and, critically, Sucrase's classic JSX
+      // transform emits bare React.createElement when code imports only
+      // named hooks (import { useState } from 'react') — React is then
+      // undefined at render, React swallows the error, the root stays
+      // empty, and the preview reports "produced no rendered output".
+      // Instead, feed the raw entry code to Sucrase's "imports" transform
+      // (which handles every import form correctly) and define React
+      // explicitly in the preview scope.
+      let rawEntry = entryCode;
+      const HOOKS = ["useState", "useEffect", "useRef", "useMemo", "useCallback", "useContext", "useReducer"];
+      const missingHooks = HOOKS.filter((h) => {
+        if (!new RegExp(`\\b${h}\\b`).test(rawEntry)) return false;
+        if (new RegExp(`import[^;]*\\b${h}\\b[^;]*from\\s+['"]react['"]`).test(rawEntry)) return false;
+        if (new RegExp(`(const|let|var|function)\\s+${h}\\b`).test(rawEntry)) return false;
+        return true;
+      });
+      if (missingHooks.length > 0) {
+        rawEntry = `import { ${missingHooks.join(", ")} } from "react";\n` + rawEntry;
+      }
       try {
-        // "imports" is essential here: bundleTsxForPreview strips the common
-        // import forms, but any import it misses (namespace imports, aliased
-        // imports, new package imports, re-exports) would otherwise survive
-        // into a classic <script> and fail at parse time with
-        // "Cannot use import statement outside a module" — a SyntaxError the
-        // preview's try/catch cannot catch, so the whole preview dies and
-        // the AI proposal is marked Verification Failed. Converting imports
-        // to require() calls with a shim below makes every import form safe.
-        const compiled = transform(bundled, {
+        const compiled = transform(rawEntry, {
           transforms: ["jsx", "typescript", "imports"],
           jsxRuntime: "classic",
         });
         let code = compiled.code;
-        // Safety net: if any import statement still survives (e.g. inside a
-        // string-free edge case), drop that line rather than shipping a
-        // script that cannot parse at all.
         if (/^\s*import\s/m.test(code)) {
           diagnostics.push("Preview warning: an unhandled import statement was dropped so the preview can parse.");
           code = code.replace(/^\s*import\s+[^;\n]+;\s*$/gm, "");
         }
         transpiledApp = `
   // Preview require shim: Sucrase "imports" output calls require()/exports.
+  // React is defined explicitly: Sucrase classic JSX emits React.createElement
+  // even when the source imports only named hooks, so without this line
+  // React would be undefined and the mount would silently produce no output.
+  var React = window.React;
   const __previewExports = {};
   const __previewModule = { exports: __previewExports };
   const __previewMockIcon = function MockIcon(props) {
@@ -503,8 +529,6 @@ export function buildTargetProjectPreviewHtml(
     if (specifier === "lucide-react") {
       return new Proxy({}, { get: function (t, prop) { if (prop === "__esModule") return true; if (prop === "default") return __previewMockIcon; return __previewMockIcon; } });
     }
-    // Unknown package: return a mock that behaves as a component/function so
-    // the app still renders instead of throwing at import time.
     return new Proxy({ __esModule: true, default: __previewMockIcon }, { get: function (t, prop) { if (prop in t) return t[prop]; return __previewMockIcon; } });
   };
   const require = __previewRequire;
