@@ -4,6 +4,11 @@ import path from "node:path";
 import { scanRealRepository, inspectRealFile } from "./realFsService.js";
 import { serverCredentialStore } from "./credentialStore.js";
 import {
+  extractStructuredJson,
+  sanitisePreview,
+  StructuredJsonParseError,
+} from "./geminiJson.js";
+import {
   listWorkspaceFiles,
   writeWorkspaceFile,
   readWorkspaceFile,
@@ -110,7 +115,22 @@ async function callGemini(
   systemPrompt: string,
   userPrompt: string,
   jsonMode = true,
-  options?: { apiKey?: string; model?: string; sessionId?: string }
+  options?: {
+    apiKey?: string;
+    model?: string;
+    sessionId?: string;
+    /** Cap for one generation. File generation needs far more than the
+     *  8192 default: a complete source file embedded as a JSON string
+     *  routinely exceeds it, and the model then stops mid-string, which
+     *  no parser can ever repair. */
+    maxOutputTokens?: number;
+    /** Human-readable label for error messages, e.g. "file src/app/router.tsx".
+     *  It is surfaced to the UI so a failure names the file that failed. */
+    contextLabel?: string;
+    /** Parse-failure retries (fresh generations, not re-parses of the same
+     *  broken text). Defaults to 2 for JSON mode, 1 otherwise. */
+    maxAttempts?: number;
+  }
 ): Promise<any> {
   const activeKey =
     options?.apiKey || serverCredentialStore.getGeminiApiKey(options?.sessionId);
@@ -125,74 +145,92 @@ async function callGemini(
     activeKey
   )}`;
 
-  const body: any = {
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: `${systemPrompt}\n\nTask:\n${userPrompt}` }],
+  const maxAttempts = jsonMode ? Math.max(1, options?.maxAttempts ?? 2) : 1;
+  let tokenCap = options?.maxOutputTokens ?? 8192;
+  let lastParseError: StructuredJsonParseError | null = null;
+  let lastOutputLength = 0;
+  let lastPreview = "";
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // On a retry, tell the model what went wrong and ask for a complete,
+    // fence-free document, and raise the token cap — retrying with the
+    // same cap would just truncate the same file again.
+    const attemptSystem =
+      attempt === 1
+        ? systemPrompt
+        : `${systemPrompt}\n\nRETRY NOTE: Your previous reply was not valid, complete JSON (${lastParseError?.kind ?? "invalid"}). Reply with ONLY one complete valid JSON value: no markdown fences, no prose before or after it, no truncation, no trailing commas.`;
+
+    const body: any = {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: `${attemptSystem}\n\nTask:\n${userPrompt}` }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: tokenCap,
       },
-    ],
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 8192,
-    },
-  };
+    };
 
-  if (jsonMode) {
-    body.generationConfig.responseMimeType = "application/json";
-  }
+    if (jsonMode) {
+      body.generationConfig.responseMimeType = "application/json";
+    }
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    // Redact any occurrence of API key in errorText before throwing
-    const safeError = errorText.replace(new RegExp(activeKey, "g"), "[REDACTED_KEY]");
-    throw new Error(`Gemini API error [${response.status}]: ${safeError}`);
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      // Redact any occurrence of API key in errorText before throwing
+      const safeError = errorText.replace(new RegExp(activeKey, "g"), "[REDACTED_KEY]");
+      throw new Error(`Gemini API error [${response.status}]: ${safeError}`);
+    }
 
-  const result = await response.json();
-  const textOutput = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    const result = await response.json();
+    const textOutput = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    const finishReason = result.candidates?.[0]?.finishReason as string | undefined;
 
-  if (!textOutput) {
-    throw new Error("Gemini returned an empty candidate response.");
-  }
+    if (!textOutput) {
+      throw new Error("Gemini returned an empty candidate response.");
+    }
 
-  if (jsonMode) {
+    if (!jsonMode) {
+      return { text: textOutput };
+    }
+
     try {
-      return JSON.parse(textOutput);
-    } catch (parseErr) {
-      console.warn("[Gateway callGemini] JSON.parse(textOutput) failed, length:", textOutput.length, "Preview:", textOutput.slice(0, 150));
-      // Clean potential markdown fenced json (e.g. ```json ... ```)
-      const cleaned = textOutput
-        .replace(/^```json\s*/i, "")
-        .replace(/^```\s*/, "")
-        .replace(/\s*```$/, "")
-        .trim();
-      try {
-        return JSON.parse(cleaned);
-      } catch {
-        // If still invalid, try to extract substring between first { and last }
-        const firstBrace = textOutput.indexOf("{");
-        const lastBrace = textOutput.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-          try {
-            return JSON.parse(textOutput.slice(firstBrace, lastBrace + 1));
-          } catch {
-            // Ignored
-          }
-        }
-        console.error("[Gateway callGemini] Failed to parse output. Full text:", textOutput);
-        throw new Error("Failed to parse Gemini output as structured JSON.");
+      // A MAX_TOKENS finish means the document was cut off even if a
+      // fragment happens to parse; treat it as a truncation failure so
+      // the retry below runs with a doubled cap.
+      if (finishReason === "MAX_TOKENS") {
+        throw new StructuredJsonParseError("truncated", textOutput.length, sanitisePreview(textOutput));
       }
+      return extractStructuredJson(textOutput);
+    } catch (parseErr) {
+      lastParseError =
+        parseErr instanceof StructuredJsonParseError
+          ? parseErr
+          : new StructuredJsonParseError("invalid", textOutput.length, sanitisePreview(textOutput));
+      lastOutputLength = textOutput.length;
+      lastPreview = lastParseError.preview;
+      console.warn(
+        `[Gateway callGemini] Attempt ${attempt}/${maxAttempts} JSON parse failed (${lastParseError.kind}), length: ${textOutput.length}, finishReason: ${finishReason ?? "unknown"}`,
+      );
+      // Next attempt gets twice the room, up to a generous ceiling.
+      tokenCap = Math.min(tokenCap * 2, 65536);
+      if (attempt < maxAttempts) continue;
     }
   }
 
-  return { text: textOutput };
+  const label = options?.contextLabel ? ` for ${options.contextLabel}` : "";
+  console.error(`[Gateway callGemini] Failed to parse output${label} after ${maxAttempts} attempt(s).`);
+  throw new Error(
+    `Failed to parse Gemini output as structured JSON${label} after ${maxAttempts} attempt(s) (${lastParseError?.kind ?? "invalid"}). Output was ${lastOutputLength} characters. Preview: ${lastPreview}`,
+  );
 }
 
 export function createGatewayServer() {
@@ -670,7 +708,15 @@ Language: ${language || "typescript"}
 Project Architecture Context:
 ${contextText || "No additional context registered."}`;
 
-        const result = await callGemini(system, prompt, true);
+        // A complete source file as one JSON string routinely exceeds the
+        // 8192-token default, so give file generation a much larger cap
+        // (the retry in callGemini doubles it further on truncation) and
+        // name the file in any final parse error, so the /build banner
+        // can say which file failed instead of failing generically.
+        const result = await callGemini(system, prompt, true, {
+          maxOutputTokens: 32768,
+          contextLabel: `file ${filePath}`,
+        });
         sendJSON(res, 200, result);
         return;
       }
