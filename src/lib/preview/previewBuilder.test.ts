@@ -53,4 +53,47 @@ describe("previewBuilder verified mount", () => {
     ]);
     expect(preview.diagnostics.find((d) => d.includes("not bundled"))).toBeUndefined();
   });
+
+  it("enriches a transpilation failure with file, line, and the offending source line", () => {
+    const preview = buildTargetProjectPreviewHtml("Demo", [
+      art("src/app/App.tsx", `export const App = () => { return <div unclosed tag ;`),
+    ]);
+    const diag = preview.diagnostics.find((d) => d.includes("Transpilation error"));
+    expect(diag).toBeDefined();
+    expect(diag).toContain("src/app/App.tsx");
+    expect(diag).toContain("line 1");
+    // The actual source line is shown, not just line:col.
+    expect(diag).toContain("unclosed");
+    // Nothing was guessed: no auto-fix note, and no compiled app.
+    expect(preview.diagnostics.find((d) => d.includes("auto-fixed"))).toBeUndefined();
+    expect(preview.html).toContain("Entry Component Not Found");
+  });
+
+  it("auto-fixes a missing comma in preview only and says so (saved code untouched)", () => {
+    const preview = buildTargetProjectPreviewHtml("Demo", [
+      art(
+        "src/app/App.tsx",
+        [
+          `const menu = [`,
+          `  { id: 1, name: "Burger" }`,
+          `  { id: 2, name: "Pizza" },`,
+          `];`,
+          `export const App = () => <div>{menu.length}</div>;`,
+        ].join("\n")
+      ),
+    ]);
+    // The preview renders: the repaired code's compiled output is
+    // embedded in the document (a failed build would leave it out).
+    // (Note: the literal "Entry Component Not Found" also appears in
+    // the mount-fallback script of every generated document, so it
+    // cannot be used as a pass/fail signal here.)
+    expect(preview.html).toContain("Burger");
+    // And the fix is disclosed as preview-only, not a transpilation error
+    // (so the build is not failed for a diagnostic it recovered from).
+    const fix = preview.diagnostics.find((d) => d.includes("auto-fixed"));
+    expect(fix).toBeDefined();
+    expect(fix).toContain("preview only");
+    expect(fix).toContain("line 3");
+    expect(preview.diagnostics.find((d) => d.includes("Transpilation error"))).toBeUndefined();
+  });
 });

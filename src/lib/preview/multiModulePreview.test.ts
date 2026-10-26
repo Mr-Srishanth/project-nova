@@ -78,4 +78,30 @@ export const SpeedGauge = ({ speed }: { speed: number }) => <div>Speed: {speed}m
     expect(preview.html).toContain("__createRequire");
     expect(preview.html).toContain("ReactDOM.createRoot");
   });
+
+  it("repairs a missing comma in the multi-module entry file (preview only)", () => {
+    const preview = buildTargetProjectPreviewHtml("MultiModuleGame", [
+      art(
+        "src/app/App.tsx",
+        [
+          `import React from "react";`,
+          `import { Widget } from "./Widget";`,
+          `const menu = [`,
+          `  { id: 1, name: "Burger" }`,
+          `  { id: 2, name: "Pizza" },`,
+          `];`,
+          `export const App = () => (<div><Widget /><span>{menu.length}</span></div>);`,
+          `export default App;`,
+        ].join("\n")
+      ),
+      art("src/app/Widget.tsx", `export const Widget = () => <span>W</span>;`),
+    ]);
+    expect(preview.diagnostics.filter((d) => d.includes("Transpilation error"))).toHaveLength(0);
+    const fix = preview.diagnostics.find((d) => d.includes("auto-fixed"));
+    expect(fix).toBeDefined();
+    expect(fix).toContain("src/app/App.tsx");
+    expect(fix).toContain("preview only");
+    expect(preview.html).toContain('__registerModule("src/app/App.tsx"');
+    expect(preview.html).toContain("Burger");
+  });
 });

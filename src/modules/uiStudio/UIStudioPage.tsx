@@ -1233,13 +1233,16 @@ export const UIStudioPage: React.FC = () => {
                     />
                   </div>
                 ) : (
-                  <div className="text-center p-8 space-y-2 max-w-md m-auto">
+                  <div className="text-center p-8 space-y-2 max-w-lg m-auto">
                     <AlertTriangle className="w-8 h-8 text-red-400/70 mx-auto" />
                     <div className="text-sm font-semibold text-zinc-200">No preview available</div>
-                    <p className="text-xs text-zinc-500">
+                    {/* <pre>, not <p>: enriched transpilation diagnostics are
+                        multi-line (file + source snippet with a caret), and
+                        a <p> collapses newlines, hiding the snippet. */}
+                    <pre className="text-xs text-zinc-400 whitespace-pre-wrap break-words text-left max-h-72 overflow-auto rounded bg-white/5 border border-white/10 p-3">
                       {previewSnap.error?.message ||
                         "The project could not be built. Fix the reported problem and rebuild."}
-                    </p>
+                    </pre>
                     <button
                       type="button"
                       onClick={handleRefresh}

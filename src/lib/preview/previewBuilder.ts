@@ -1,6 +1,7 @@
 import type { BuildArtifact } from "@/types/artifact";
 import type { ApplicationArchetype, PreviewBuildResult } from "@/types/uiStudio";
 import { transform } from "sucrase";
+import { formatTranspilationError, tryRepairMissingComma } from "./syntaxRepair";
 
 /**
  * Strips script tags, secret patterns, and host-leaking references from generated content.
@@ -361,9 +362,33 @@ export function buildTargetProjectPreviewHtml(
             });
             compiledModules.push({ path: fPath, code: res.code });
           } catch (mErr: any) {
-            // Non-critical if it's an unused file, but if it's the entry file or imported, mark it
-            if (fPath === entryFile) {
-              diagnostics.push(`Transpilation error: ${mErr.message}`);
+            // Preview-only repair attempt: a missing comma is the most
+            // common AI-generation slip, and a verified repair (the
+            // repaired source must re-transform cleanly) lets the
+            // preview render instead of failing outright. The saved
+            // project file is never rewritten — the diagnostic says so.
+            const repair = tryRepairMissingComma(fContent, mErr);
+            if (repair) {
+              try {
+                const repaired = transform(repair.repaired, {
+                  transforms: ["jsx", "typescript", "imports"],
+                  jsxRuntime: "classic",
+                  production: true,
+                  filePath: fPath,
+                });
+                compiledModules.push({ path: fPath, code: repaired.code });
+                diagnostics.push(
+                  `Preview auto-fixed a syntax error in ${fPath} at line ${repair.line} (preview only — the saved file still has the original slip; fix the missing comma there).`
+                );
+              } catch {
+                if (fPath === entryFile) {
+                  diagnostics.push(formatTranspilationError(fPath, fContent, mErr));
+                  hasCompileError = true;
+                }
+              }
+            } else if (fPath === entryFile) {
+              // Non-critical if it's an unused file, but if it's the entry file or imported, mark it
+              diagnostics.push(formatTranspilationError(fPath, fContent, mErr));
               hasCompileError = true;
             }
           }
@@ -499,18 +524,59 @@ export function buildTargetProjectPreviewHtml(
         if (new RegExp(`(const|let|var|function)\\s+${h}\\b`).test(rawEntry)) return false;
         return true;
       });
-      if (missingHooks.length > 0) {
+      // Track the prepended hook-import line so error line numbers can
+      // be mapped back to the saved file (rawEntry is 1 line longer).
+      const injectedHookLine = missingHooks.length > 0;
+      if (injectedHookLine) {
         rawEntry = `import { ${missingHooks.join(", ")} } from "react";\n` + rawEntry;
       }
+      // Try the original first; on a Sucrase failure, try the verified
+      // missing-comma repair before giving up. A repaired preview still
+      // reports itself (see autoFixLine diagnostic below) and never
+      // rewrites the saved project file.
+      let compiledCode: string | null = null;
+      let autoFixLine: number | null = null;
+      let lastSucraseError: unknown = null;
       try {
-        const compiled = transform(rawEntry, {
+        compiledCode = transform(rawEntry, {
           transforms: ["jsx", "typescript", "imports"],
           jsxRuntime: "classic",
-        });
-        let code = compiled.code;
+        }).code;
+      } catch (sucraseErr: unknown) {
+        lastSucraseError = sucraseErr;
+        const repair = tryRepairMissingComma(rawEntry, sucraseErr);
+        if (repair) {
+          try {
+            compiledCode = transform(repair.repaired, {
+              transforms: ["jsx", "typescript", "imports"],
+              jsxRuntime: "classic",
+            }).code;
+            autoFixLine = injectedHookLine ? repair.line - 1 : repair.line;
+          } catch {
+            compiledCode = null;
+          }
+        }
+      }
+      if (compiledCode === null) {
+        diagnostics.push(
+          formatTranspilationError(
+            entryFile,
+            rawEntry,
+            lastSucraseError,
+            injectedHookLine ? { displaySource: entryCode, lineOffset: -1 } : {}
+          )
+        );
+        transpiledApp = "";
+      } else {
+        let code = compiledCode;
         if (/^\s*import\s/m.test(code)) {
           diagnostics.push("Preview warning: an unhandled import statement was dropped so the preview can parse.");
           code = code.replace(/^\s*import\s+[^;\n]+;\s*$/gm, "");
+        }
+        if (autoFixLine !== null) {
+          diagnostics.push(
+            `Preview auto-fixed a syntax error in ${entryFile} at line ${autoFixLine} (preview only — the saved file still has the original slip; fix the missing comma there).`
+          );
         }
         transpiledApp = `
   // Preview require shim: Sucrase "imports" output calls require()/exports.
@@ -537,9 +603,6 @@ export function buildTargetProjectPreviewHtml(
 ${code}
   if (__previewExports.default || __previewExports.App) { window.App = __previewExports.default || __previewExports.App; }
 `;
-      } catch (sucraseErr: any) {
-        diagnostics.push(`Transpilation error: ${sucraseErr.message}`);
-        transpiledApp = "";
       }
     }
   } else {
