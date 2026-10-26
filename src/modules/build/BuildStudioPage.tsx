@@ -327,7 +327,11 @@ export const BuildStudioPage: React.FC = () => {
           projectId: selectedProjectId,
           path: filePath,
           type,
-          purpose: `Planned artifact for ${filePath}`,
+          // Never leave a planned file with a generic purpose: the
+          // generator only knows the domain from purpose + context, and
+          // a generic purpose is how a restaurant prompt once produced
+          // a tech-gadget storefront.
+          purpose: `Implement ${filePath} for project "${selectedProject.name}": ${selectedProject.objective || selectedProject.description || "the project's stated goal"}`,
           status: filePath.startsWith(".env") || filePath === ".gitignore" ? "approved" : "planned",
           content: initialContent,
           language,
@@ -383,7 +387,8 @@ MVP: ${(selectedProject.blueprint.features?.mvp || []).join("; ")}
 Important: ${(selectedProject.blueprint.features?.important || []).join("; ")}
 
 CRITICAL DIRECTIVE:
-Implement the real functional requirements of the project. If this is a car game, interactive game, or specialized system, write the actual game loop, controls, mechanics, physics, and canvas rendering. Do not write a generic enterprise landing page!`;
+Implement the real functional requirements of the project. If this is a car game, interactive game, or specialized system, write the actual game loop, controls, mechanics, physics, and canvas rendering. Do not write a generic enterprise landing page!
+DOMAIN FAITHFULNESS: Every item, name, heading and sample in the code MUST match this project's stated domain above. A restaurant project MUST show food/menu items, never tech gadgets or products from another domain. The brand name in the UI MUST be the project name as plain text, never a template placeholder like \${project.name} (an undefined variable breaks the whole preview).`;
 
       const response = await aiClient.generateFile({
         projectId: selectedProject.id,
@@ -427,7 +432,11 @@ Implement the real functional requirements of the project. If this is a car game
           projectId: selectedProjectId,
           path: filePath,
           type,
-          purpose: `Planned artifact for ${filePath}`,
+          // Never leave a planned file with a generic purpose: the
+          // generator only knows the domain from purpose + context, and
+          // a generic purpose is how a restaurant prompt once produced
+          // a tech-gadget storefront.
+          purpose: `Implement ${filePath} for project "${selectedProject.name}": ${selectedProject.objective || selectedProject.description || "the project's stated goal"}`,
           status: "planned",
           content: `// ${filePath}\n`,
           language,
@@ -456,7 +465,8 @@ MVP: ${(selectedProject.blueprint.features?.mvp || []).join("; ")}
 Important: ${(selectedProject.blueprint.features?.important || []).join("; ")}
 
 CRITICAL DIRECTIVE:
-Implement the real functional requirements of the project. If this is a car game, interactive game, or specialized system, write the actual game loop, controls, mechanics, physics, and canvas rendering. Do not write a generic enterprise landing page!`;
+Implement the real functional requirements of the project. If this is a car game, interactive game, or specialized system, write the actual game loop, controls, mechanics, physics, and canvas rendering. Do not write a generic enterprise landing page!
+DOMAIN FAITHFULNESS: Every item, name, heading and sample in the code MUST match this project's stated domain above. A restaurant project MUST show food/menu items, never tech gadgets or products from another domain. The brand name in the UI MUST be the project name as plain text, never a template placeholder like \${project.name} (an undefined variable breaks the whole preview).`;
 
         const response = await aiClient.generateFile({
           projectId: selectedProject.id,

@@ -1,6 +1,10 @@
 import type { BuildArtifact } from "@/types/artifact";
 import type { AIEditPlan, AIEditPlanItem } from "@/types/uiStudio";
 import { aiClient } from "@/lib/ai/client";
+import {
+  needsSimpleAnswer,
+  buildSimpleAppAdvisory,
+} from "@/lib/uiStudio/simpleAppDescription";
 
 /**
  * Plans and generates structured AI edits for target project files based on user prompts.
@@ -17,6 +21,8 @@ export async function planAIEdits(params: {
   operationId?: string;
   projectId: string;
   projectName: string;
+  projectObjective?: string;
+  projectDescription?: string;
   userPrompt: string;
   mode: "edit" | "auto" | "plan" | "ask" | "fix" | "apply";
   artifacts: BuildArtifact[];
@@ -27,6 +33,8 @@ export async function planAIEdits(params: {
     operationId = `op_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     projectId,
     projectName,
+    projectObjective,
+    projectDescription,
     userPrompt,
     mode,
     artifacts,
@@ -41,6 +49,38 @@ export async function planAIEdits(params: {
 
   // Mode: ASK -> Pure informational advisory, 0 files modified
   if (mode === "ask") {
+    // Simple / "what does this app do" questions MUST NOT get the canned
+    // technical line ("contains N artifacts ... Vite React target") that
+    // a live student test received verbatim on 2026-10-26. Answer in
+    // plain words, grounded in the project's own objective/description
+    // or, failing that, in the visible words of its own code. If there
+    // is nothing grounded to say, say so plainly.
+    if (needsSimpleAnswer(userPrompt)) {
+      const simple = buildSimpleAppAdvisory(
+        projectName,
+        projectObjective,
+        projectDescription,
+        currentContent,
+      );
+      return {
+        id: `plan_${operationId}`,
+        operationId,
+        projectId,
+        userPrompt,
+        mode: "ask",
+        summary: `Simple explanation of "${projectName}"`,
+        impactAssessment: "Informational query only. No workspace files modified.",
+        advisoryText:
+          simple ??
+          `I do not have a simple description of "${projectName}" yet — no objective, description or visible app text was available to explain it from.`,
+        items: [],
+        createdAt: new Date().toISOString(),
+        approved: false,
+        applied: false,
+        verificationLevel: "generated",
+      };
+    }
+
     let advisory = `Technical Advisory for "${userPrompt}":\n\n`;
     if (promptLower.includes("rout") || promptLower.includes("page")) {
       advisory += `The target project manages client routes via \`src/app/router.tsx\` and renders components into \`src/app/App.tsx\`. To declare a new route, add a Route entry matching your path and link it in the navbar.`;

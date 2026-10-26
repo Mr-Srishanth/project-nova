@@ -8,6 +8,7 @@ import {
   sanitisePreview,
   StructuredJsonParseError,
 } from "./geminiJson.js";
+import { buildAssistSystemPrompt } from "./assistPrompt.js";
 import {
   listWorkspaceFiles,
   writeWorkspaceFile,
@@ -614,7 +615,8 @@ Generate a comprehensive, technically sound system blueprint in JSON conforming 
   "futureImprovements": ["Extended features"]
 }
 CRITICAL DOMAIN DIRECTIVE:
-If the project is a game (e.g. car game, arcade, racing, simulation), the architecture MUST center on a playable game loop (Canvas / WebGL / React state), steering controls, physics/collision detection, score/distance telemetry, and audio/graphics assets. DO NOT output a generic enterprise CRUD database architecture or a marketing landing page for a game request!`;
+- Every feature, entity, example and piece of sample content in this blueprint MUST match the project's stated objective and domain. A restaurant project MUST have food/menu features and entities (dishes, menu categories, orders) — NEVER tech gadgets, hardware products, or content from another domain. Never reuse example content from a different domain.
+- If the project is a game (e.g. car game, arcade, racing, simulation), the architecture MUST center on a playable game loop (Canvas / WebGL / React state), steering controls, physics/collision detection, score/distance telemetry, and audio/graphics assets. DO NOT output a generic enterprise CRUD database architecture or a marketing landing page for a game request!`;
 
         const prompt = `Project: ${projectName}
 Objective: ${objective}
@@ -637,19 +639,11 @@ ${contextText || "No prior context registered."}`;
           return;
         }
 
-        const system = `You are ProjectNova AI Assistant — a senior engineering lead advising exclusively on THIS project.
-RULES:
-1. Ground your answer in the provided project context.
-2. If context lacks details, say what is missing rather than fabricating facts.
-3. Suggest concrete next architectural steps and highlight trade-offs or risks.
-4. Format output as JSON with:
-{
-  "answer": "Clear markdown-formatted technical response",
-  "suggestedAction": "Optional next step recommendation",
-  "codeSnippets": [{ "language": "ts", "filename": "example.ts", "code": "console.log(1);" }],
-  "relevantDecisions": ["Decision reference if any"],
-  "openQuestionsIdentified": ["Question to clarify if any"]
-}`;
+        // Simple/student questions (and "what does this app do") get a
+        // plain-language system prompt, not the senior-engineering-lead
+        // technical voice — see server/assistPrompt.ts. The JSON output
+        // shape the frontend expects is unchanged in both modes.
+        const { system } = buildAssistSystemPrompt(question);
 
         const prompt = `PROJECT CONTEXT:
 ${contextText || "No context registered."}
@@ -699,7 +693,12 @@ RULES:
 - For games/simulations: implement real playable controls, canvas/rendering loop, state, collision, and scoring.
 - For e-commerce/shops: implement real product catalogs, live interactive shopping cart quantity arithmetic, subtotal calculation, login/register forms, and exact requested visual aesthetics (e.g., Liquid Glass midnight backgrounds, glow gradients, frosted glass panels).
 - For multi-page requests (e.g. home, catalog, cart, login, register): provide complete functional views and seamless navigation.
-NEVER substitute an e-commerce store, game, or tool with a static marketing landing page or generic enterprise metrics dashboard!`;
+5. DOMAIN FAITHFULNESS — this is a correctness rule, not a style preference:
+- Every item, name, heading and piece of sample content in the generated code MUST match the project's stated domain from the Project Architecture Context (objective, description, blueprint overview and features).
+- A restaurant/food project MUST show food and menu items (dishes, prices, categories like starters/mains/drinks) — NEVER tech gadgets, hardware, or products from another domain.
+- A flower project MUST show flowers; a hardware project MUST show hardware. Never reuse example products from another domain when the context does not name them.
+- If the context names no concrete items, invent items ONLY inside the stated domain, never outside it.
+- The brand name shown in the UI MUST be the project name as plain literal text. NEVER emit a template placeholder such as \${project.name} or any other undefined variable for the brand — an undefined variable breaks the whole preview at render time.`;
 
         const prompt = `Project: ${projectName}
 Target File: ${filePath}
