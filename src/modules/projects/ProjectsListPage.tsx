@@ -23,12 +23,21 @@ export const ProjectsListPage: React.FC = () => {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadProjects = async () => {
     setLoading(true);
-    const data = await projectStorage.list();
-    setProjects(data);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const data = await projectStorage.list();
+      setProjects(data);
+    } catch (err: any) {
+      // Previously a failed list() left the loading spinner up forever
+      // with no error and no retry — surface it instead.
+      setLoadError(err?.message || "Could not load projects.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -38,7 +47,7 @@ export const ProjectsListPage: React.FC = () => {
   const handleDelete = async (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${name}"? This action removes the project and its blueprint from local storage.`
+      `Are you sure you want to delete "${name}"? This action removes the project and its blueprint from your workspace.`
     );
     if (!confirmed) return;
 
@@ -68,7 +77,7 @@ export const ProjectsListPage: React.FC = () => {
             Project Workspaces
           </h1>
           <p className="text-xs md:text-sm font-sans text-foreground-muted">
-            Manage your local projects, open active blueprints, and monitor milestone progression.
+            Manage your projects, open active blueprints, and monitor milestone progression.
           </p>
         </div>
         <Button
@@ -110,7 +119,14 @@ export const ProjectsListPage: React.FC = () => {
       {/* Project Cards List */}
       {loading ? (
         <div className="p-16 text-center border-2 border-border rounded-tactile bg-surface shadow-hard">
-          <p className="text-sm font-mono text-foreground-muted">Reading local project registry…</p>
+          <p className="text-sm font-mono text-foreground-muted">Loading your projects…</p>
+        </div>
+      ) : loadError ? (
+        <div className="p-16 text-center border-2 border-red-300 rounded-tactile bg-surface shadow-hard space-y-4">
+          <p className="text-sm font-mono text-red-700">{loadError}</p>
+          <Button variant="outline" size="sm" onClick={() => void loadProjects()}>
+            Retry
+          </Button>
         </div>
       ) : filteredProjects.length === 0 ? (
         <Card className="text-center py-16 bg-surface shadow-hard">
@@ -177,6 +193,7 @@ export const ProjectsListPage: React.FC = () => {
                     onClick={(e) => handleDelete(p.id, p.name, e)}
                     disabled={deletingId === p.id}
                     title="Delete project"
+                    aria-label={`Delete ${p.name}`}
                     className="p-1.5 text-foreground-muted hover:text-danger hover:bg-danger/10 border border-transparent hover:border-danger/30 rounded-tactile-sm transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />

@@ -115,7 +115,7 @@ export const SettingsPage: React.FC = () => {
         setGeminiStatus({
           state: "unconfigured",
           label: "Not Configured",
-          detail: "No active API key detected on port 4000 gateway.",
+          detail: "No active API key detected on the AI gateway.",
           lastChecked: new Date().toLocaleTimeString(),
         });
       }
@@ -144,12 +144,12 @@ export const SettingsPage: React.FC = () => {
       setGeminiStatus({
         state: "error",
         label: "Gateway Offline",
-        detail: "Cannot reach AI Gateway on port 4000. Start using 'bun run server'.",
+        detail: "Cannot reach the AI Gateway. In local development, start it using 'bun run server'.",
       });
       setSupabaseStatus({
         state: "error",
         label: "Gateway Offline",
-        detail: "AI Gateway port 4000 unreachable for credential handling.",
+        detail: "AI Gateway unreachable for credential handling.",
       });
     } finally {
       setIsRefreshingAll(false);
@@ -609,7 +609,7 @@ export const SettingsPage: React.FC = () => {
                 </button>
               </div>
               <p className="text-[11px] text-[#153A52]/60 mt-1 font-sans">
-                Keys remain server-only in loopback memory on port 4000. Never exposed to browser bundles.
+                Keys remain server-only in gateway memory. Never exposed to browser bundles.
               </p>
             </div>
 
@@ -723,12 +723,12 @@ export const SettingsPage: React.FC = () => {
               <div className="bg-white p-4 rounded-xl border border-[#153A52]/10 shadow-xs">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[#153A52]/60">
-                    AI Gateway Loopback
+                    AI Gateway
                   </span>
                   <Server className="w-3.5 h-3.5 text-purple-600" />
                 </div>
                 <div className="font-bold text-sm text-[#153A52]">
-                  {gatewayHealth ? "Port 4000 Connected" : "Port 4000 Offline"}
+                  {gatewayHealth ? "AI Gateway Connected" : "AI Gateway Offline"}
                 </div>
                 <div className="text-[11px] font-mono text-[#153A52]/70 mt-1">
                   Provider: {gatewayHealth?.provider || "none"}
@@ -762,6 +762,25 @@ export const SettingsPage: React.FC = () => {
                 </div>
                 <div className="text-[11px] text-[#153A52]/70 mt-1">
                   Isolates credentials in server memory
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-[#153A52]/10 shadow-xs">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#153A52]/60">
+                    Browser Environment
+                  </span>
+                  <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
+                </div>
+                <div className="font-bold text-sm text-[#153A52]">
+                  {typeof navigator !== "undefined" ? navigator.platform || "Unknown platform" : "Unknown platform"}
+                </div>
+                <div className="text-[11px] font-mono text-[#153A52]/70 mt-1">
+                  Language: {typeof navigator !== "undefined" ? navigator.language : "unknown"} ·{" "}
+                  {typeof navigator !== "undefined" && navigator.onLine ? "Online" : "Offline"}
+                </div>
+                <div className="text-[11px] text-[#153A52]/70 mt-1">
+                  Read from this browser only — ProjectNova does not manage host OS settings.
                 </div>
               </div>
             </div>

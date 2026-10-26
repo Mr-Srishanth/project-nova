@@ -34,6 +34,39 @@ export async function getCurrentUser(): Promise<User | null> {
   return data.user ?? null;
 }
 
+/**
+ * Signed-in user id for storage routing, robust to a transient
+ * getUser() failure (offline / token-refresh in flight).
+ *
+ * getUser() validates the token against the server and returns null on
+ * ANY error — including a network error for a user who is still signed
+ * in. Treating that null as "signed out" used to route the storage
+ * proxies and the Supabase adapters straight to local browser storage,
+ * so a signed-in user silently saw a different (local) project list.
+ * Falling back to the locally cached session (getSession) distinguishes
+ * "no session at all" (null, correctly local) from "session cached but
+ * not freshly validated" (id, correctly Supabase-routed; the adapter's
+ * own remote calls then surface real failures instead of local data).
+ * A truly expired/invalid refresh token clears the cached session, so
+ * getSession also returns null and routing stays local / gated.
+ */
+export async function getSignedInUserId(): Promise<string | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    if (data.user) return data.user.id;
+  } catch {
+    /* fall through to the cached session below */
+  }
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.user.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getCurrentSession(): Promise<Session | null> {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
@@ -146,6 +179,14 @@ export function useSupabaseAuth(): {
     supabase.auth.getSession().then(({ data }) => {
       if (!cancelled) {
         setUser(data.session?.user ?? null);
+        setLoading(false);
+      }
+    }).catch(() => {
+      // getSession rejecting (e.g. storage/network fault) must not leave
+      // AppShell stuck on "Checking account…" forever; treat as no user
+      // so the gate (or the local app, when unconfigured) renders.
+      if (!cancelled) {
+        setUser(null);
         setLoading(false);
       }
     });

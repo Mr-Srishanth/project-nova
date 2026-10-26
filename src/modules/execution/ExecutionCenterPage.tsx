@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Cpu,
@@ -17,7 +17,8 @@ import { projectStorage } from "@/lib/storage/projectStorage";
 import { executionStorage } from "@/lib/storage/executionStorage";
 import { executeRegisteredAction } from "@/lib/execution/actionExecutor";
 import { areStepDependenciesSatisfied } from "@/lib/execution/planEngine";
-import { computeNextRunTimestamp } from "@/lib/execution/schedulerEngine";
+import { computeNextRunTimestamp, isScheduleDue } from "@/lib/execution/schedulerEngine";
+import { getCurrentUser } from "@/lib/supabase/auth";
 import { generateApprovalToken } from "@/lib/execution/capabilityRegistry";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -39,6 +40,11 @@ export const ExecutionCenterPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"plans" | "schedules" | "runs">("plans");
   const [loading, setLoading] = useState(true);
   const [isRunningPipeline, setIsRunningPipeline] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Latest-handler ref so the auto-run timer below always calls the
+  // current closure (fresh activePlan/schedules) instead of a stale one.
+  const triggerScheduleNowRef = useRef<(sch: AutomationSchedule) => Promise<void>>(async () => {});
+  const runningRef = useRef(false);
 
   // Load Projects
   useEffect(() => {
@@ -164,10 +170,20 @@ export const ExecutionCenterPage: React.FC = () => {
   const handleApproveStep = async (step: ExecutionStep) => {
     if (!activePlan) return;
     const token = generateApprovalToken(step.actionType, step.parameters);
+    // Approval is self-approval by whoever clicks Approve in this app —
+    // never attribute it to a fictional "QA Officer". Use the signed-in
+    // account when known, otherwise say so plainly.
+    let approver = "App user (self-approval)";
+    try {
+      const user = await getCurrentUser();
+      if (user?.email) approver = `${user.email} (self-approval)`;
+    } catch {
+      /* signed out / unconfigured: keep the plain fallback */
+    }
     const updatedStep: ExecutionStep = {
       ...step,
       status: "ready",
-      approvedBy: "QA Officer",
+      approvedBy: approver,
       approvedAt: new Date().toISOString(),
       approvalToken: token,
     };
@@ -181,13 +197,18 @@ export const ExecutionCenterPage: React.FC = () => {
     setPlans((prev) => prev.map((p) => (p.id === updatedPlan.id ? updatedPlan : p)));
   };
 
-  const handleExecuteStep = async (step: ExecutionStep) => {
-    if (!activePlan || !selectedProject) return;
+  // stepsOverride lets sequential "Run All" chain on the freshest step list
+  // instead of the stale activePlan snapshot captured when the loop started
+  // (which previously made step 2+ fail its dependency check and reverted
+  // earlier steps to "ready" on save). Returns the updated step list.
+  const handleExecuteStep = async (step: ExecutionStep, stepsOverride?: ExecutionStep[]): Promise<ExecutionStep[] | undefined> => {
+    if (!activePlan || !selectedProject) return undefined;
+    const baseSteps = stepsOverride ?? activePlan.steps;
 
     // Check prerequisites
-    if (!areStepDependenciesSatisfied(step, activePlan.steps)) {
-      alert(`Prerequisite dependencies for step "${step.title}" are not yet completed.`);
-      return;
+    if (!areStepDependenciesSatisfied(step, baseSteps)) {
+      setNotice(`Prerequisite dependencies for step "${step.title}" are not yet completed.`);
+      return baseSteps;
     }
 
     const startTimestamp = Date.now();
@@ -195,7 +216,7 @@ export const ExecutionCenterPage: React.FC = () => {
 
     // Mark running
     const runningStep: ExecutionStep = { ...step, status: "running", startedAt: new Date().toISOString() };
-    let currentSteps = activePlan.steps.map((s) => (s.id === step.id ? runningStep : s));
+    let currentSteps = baseSteps.map((s) => (s.id === step.id ? runningStep : s));
     await executionStorage.savePlan({ ...activePlan, steps: currentSteps });
     setPlans((prev) => prev.map((p) => (p.id === activePlan.id ? { ...p, steps: currentSteps } : p)));
 
@@ -214,7 +235,7 @@ export const ExecutionCenterPage: React.FC = () => {
       retryCount: outcome.success ? step.retryCount : step.retryCount + 1,
     };
 
-    currentSteps = activePlan.steps.map((s) => (s.id === step.id ? completedStep : s));
+    currentSteps = currentSteps.map((s) => (s.id === step.id ? completedStep : s));
     const savedPlan = await executionStorage.savePlan({
       ...activePlan,
       steps: currentSteps,
@@ -243,19 +264,26 @@ export const ExecutionCenterPage: React.FC = () => {
 
     setPlans((prev) => prev.map((p) => (p.id === savedPlan.id ? savedPlan : p)));
     setRuns(updatedRuns);
+    return currentSteps;
   };
 
-  const handleExecuteAllSteps = async () => {
-    if (!activePlan || !selectedProject) return;
+  const handleExecuteAllSteps = async (): Promise<boolean> => {
+    if (!activePlan || !selectedProject) return false;
     setIsRunningPipeline(true);
 
-    for (const step of activePlan.steps) {
-      if (step.status === "completed") continue;
-      if (!areStepDependenciesSatisfied(step, activePlan.steps)) break;
-      await handleExecuteStep(step);
+    // Chain on a live snapshot so dependent steps see earlier completions.
+    let snapshot = [...activePlan.steps];
+    for (const step of [...snapshot]) {
+      const current = snapshot.find((s) => s.id === step.id)!;
+      if (current.status === "completed") continue;
+      if (!areStepDependenciesSatisfied(current, snapshot)) break;
+      const updated = await handleExecuteStep(current, snapshot);
+      if (updated) snapshot = updated;
+      else break;
     }
 
     setIsRunningPipeline(false);
+    return snapshot.every((s) => s.status === "completed");
   };
 
   const handleToggleSchedule = async (scheduleId: string, enabled: boolean) => {
@@ -274,16 +302,47 @@ export const ExecutionCenterPage: React.FC = () => {
 
   const handleTriggerScheduleNow = async (sch: AutomationSchedule) => {
     if (activePlan) {
-      await handleExecuteAllSteps();
+      const allCompleted = await handleExecuteAllSteps();
       const updated = await executionStorage.saveSchedule({
         ...sch,
         lastRunAt: new Date().toISOString(),
-        lastRunStatus: "completed",
+        lastRunStatus: allCompleted ? "completed" : "failed",
         nextRunAt: computeNextRunTimestamp(sch.recurrence),
       });
       setSchedules((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     }
   };
+
+  // Keep the auto-run timer pointed at the latest trigger handler.
+  useEffect(() => {
+    triggerScheduleNowRef.current = handleTriggerScheduleNow;
+  });
+
+  // REAL auto-run (previously missing: schedules only ran via manual
+  // "Trigger Now" despite "Next run" implying automation). While this page
+  // is open, every 30s any enabled schedule past its nextRunAt runs the
+  // active plan once and advances its nextRunAt. Nothing runs when the
+  // browser/tab is closed — there is no background daemon.
+  useEffect(() => {
+    if (schedules.length === 0) return;
+    const checkDue = async () => {
+      if (runningRef.current) return;
+      const due = schedules.filter((s) => isScheduleDue(s));
+      if (due.length === 0) return;
+      runningRef.current = true;
+      try {
+        for (const sch of due) {
+          await triggerScheduleNowRef.current(sch);
+        }
+      } finally {
+        runningRef.current = false;
+      }
+    };
+    void checkDue();
+    const timer = setInterval(() => void checkDue(), 30000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedules]);
 
   const handleCreateSchedule = async (title: string, recurrence: ScheduleRecurrence) => {
     if (!selectedProject || !activePlan) return;
@@ -350,7 +409,7 @@ export const ExecutionCenterPage: React.FC = () => {
             Execution Center
           </h1>
           <p className="text-sm text-foreground-muted">
-            Deterministic pipeline plans, active-session schedulers, parameter-bound approval gates, and execution audit history.
+            Deterministic pipeline plans, parameter-bound approval gates, and execution audit history. Schedules auto-run every 30 seconds while this page is open; nothing runs when the tab is closed.
           </p>
         </div>
 
@@ -370,6 +429,13 @@ export const ExecutionCenterPage: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {notice && (
+        <div className="p-3 bg-amber-50 border-2 border-amber-300 rounded-tactile text-xs text-amber-900 flex items-center justify-between gap-3">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} className="font-bold hover:underline shrink-0">Dismiss</button>
+        </div>
+      )}
 
       {/* Navigation Tabs */}
       <div className="flex items-center gap-2 border-b-2 border-border/20 pb-2">

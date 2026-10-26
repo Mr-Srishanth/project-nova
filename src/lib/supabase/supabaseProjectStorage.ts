@@ -15,10 +15,20 @@
  *   owner from input (CreateProjectInput has no owner field). update()
  *   preserves the row's existing owner_id — it is never overwritten.
  * - Signed out / Supabase unconfigured: local browser storage only.
- * - Remote failure (offline / network error): that single call falls back
- *   to local storage so the app keeps working offline. It is never merged
- *   with remote results, and a remote row that exists is never shadowed
- *   by a local copy.
+ * - Remote failure (offline / network error) on a READ or DELETE: that
+ *   call returns empty / false, never local data. A signed-in user must
+ *   never silently see local browser projects (which may belong to a
+ *   different browser session) under the "Your projects only" header,
+ *   and a failed delete must never report a local deletion as a cloud
+ *   deletion. This matches the error-object path, which already
+ *   returned [] / false instead of local data.
+ * - Remote failure on a WRITE (create / update) still falls back to
+ *   local storage — see the KNOWN TRAP note on create() below. That
+ *   fallback is deliberately NOT widened or hidden further here:
+ *   several create/update callers have no error handling, so throwing
+ *   there would turn a transient failure into unhandled rejections
+ *   and stuck "Saving…" UI. Tightening writes needs caller-level
+ *   error UI first (tracked in the audit report, not done here).
  *
  * Mapping: initialPrompt / generationStatus round-trip through the
  * initial_prompt / generation_status columns added by
@@ -29,17 +39,20 @@
 import type { Project, CreateProjectInput, UpdateProjectInput } from '@/types/project';
 import { IProjectStorageAdapter, localProjectStorage } from '../storage/projectStorage';
 import { getSupabaseClient } from './supabaseClient';
-import { getCurrentUser } from './auth';
+import { getSignedInUserId } from './auth';
 import { generateId } from '@/lib/utils';
 
 export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
   private localFallback: IProjectStorageAdapter = localProjectStorage;
 
-  /** Signed-in user id, or null when signed out / unconfigured. */
+  /** Signed-in user id, or null when signed out / unconfigured.
+   *  Uses getSignedInUserId (getUser, falling back to the cached
+   *  session) so a transient getUser failure does not masquerade as
+   *  "signed out" and route a signed-in user to local storage. */
   private async currentUserId(): Promise<string | null> {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
-    return (await getCurrentUser())?.id ?? null;
+    return getSignedInUserId();
   }
 
   async list(): Promise<Project[]> {
@@ -62,9 +75,11 @@ export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
       // No local merge, even when remote is empty.
       return (data ?? []).map(this.mapRowToProject);
     } catch (err) {
-      // Offline: local fallback for this call only, never merged.
-      console.warn('[Supabase Storage] Network error listing projects, using offline fallback:', err);
-      return this.localFallback.list();
+      // Offline / network throw: return empty, NEVER local data. The
+      // error-object path above already returns [] for the same reason:
+      // a signed-in list must not show local-session projects.
+      console.warn('[Supabase Storage] Network error listing projects:', err);
+      return [];
     }
   }
 
@@ -85,7 +100,8 @@ export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
       if (error || !data) return null;
       return this.mapRowToProject(data);
     } catch {
-      return this.localFallback.getById(id);
+      // Network throw: a miss, never a local lookup (see list()).
+      return null;
     }
   }
 
@@ -119,6 +135,14 @@ export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
       const row = this.mapProjectToRow(newProject, userId);
       const { error } = await supabase.from('projects').insert(row);
       if (error) {
+        // KNOWN TRAP (kept, documented, not silently widened): a remote
+        // insert failure falls back to local storage, which generates a
+        // DIFFERENT id (localFallback.create ignores newProject.id) and
+        // stores a local-only row. The caller is told success, but the
+        // project will not appear in the signed-in (remote) list once
+        // the network recovers, and it is only claimed by a later
+        // manual "Move local to cloud". Do not rely on this path for
+        // cloud saves; it exists only so an offline create is not lost.
         console.warn('[Supabase Storage] Insert failed, storing locally (offline fallback):', error.message);
         return this.localFallback.create(input);
       }
@@ -189,7 +213,10 @@ export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
       await this.localFallback.delete(id).catch(() => null);
       return true;
     } catch {
-      return this.localFallback.delete(id);
+      // Network throw: report failure, do NOT delete the local copy
+      // and report it as a cloud deletion — the remote row still exists
+      // and will reappear on the next successful list.
+      return false;
     }
   }
 

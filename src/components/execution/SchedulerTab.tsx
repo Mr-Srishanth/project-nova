@@ -46,8 +46,8 @@ export const SchedulerTab: React.FC<SchedulerTabProps> = ({
         </div>
         <p className="text-xs text-amber-800 leading-relaxed">
           ProjectNova AI runs securely inside your client browser and local developer environment.
-          Scheduled automations compute due intervals and execute <strong>while the application session is active</strong>.
-          No hidden background daemons or untrusted third-party background services run when the browser is closed.
+          Enabled schedules past their next run time <strong>auto-run every 30 seconds while this Execution Center page is open</strong>
+          (use "Trigger Now" to run immediately). No hidden background daemons or untrusted third-party background services run when the browser tab is closed.
         </p>
       </div>
 

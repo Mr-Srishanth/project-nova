@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Sliders,
   MousePointerClick,
+  X,
 } from "lucide-react";
 import type { Project } from "@/types/project";
 import type { BuildArtifact } from "@/types/artifact";
@@ -1017,6 +1018,10 @@ export const UIStudioPage: React.FC = () => {
             type="button"
             onClick={() => {
               setMobileTab(id);
+              // Reopening matters: the panel can be closed with the X in
+              // its header, and without this the mobile tabs would switch
+              // state while the panel stayed closed (invisible no-op).
+              setRightPanelOpen(true);
               if (id === "assistant") setRightTab("ai");
               if (id === "inspector") setRightTab("inspector");
             }}
@@ -1099,6 +1104,11 @@ export const UIStudioPage: React.FC = () => {
                     if (!inspectMode) {
                       setRightTab("inspector");
                       setRightPanelOpen(true);
+                      // On phones the inspector lives behind the mobile
+                      // tab bar: without this, Inspect only turned green
+                      // and showed nothing (same pattern as Auto-Fix and
+                      // element-selected messages below, which do switch).
+                      if (window.innerWidth < 768) setMobileTab("inspector");
                     }
                   }}
                   className={`flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border cursor-pointer ${
@@ -1128,6 +1138,21 @@ export const UIStudioPage: React.FC = () => {
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                 </button>
+                {!rightPanelOpen && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRightPanelOpen(true);
+                      setRightTab("ai");
+                      if (window.innerWidth < 768) setMobileTab("assistant");
+                    }}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border border-white/10 text-zinc-300 hover:bg-white/5 cursor-pointer"
+                    title="Open AI assistant panel"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span className="hidden xl:inline">Assistant</span>
+                  </button>
+                )}
               </div>
 
               {showingFallback && fallbackDoc && (
@@ -1147,10 +1172,16 @@ export const UIStudioPage: React.FC = () => {
               )}
 
               {isErrorStage && !showingFallback && previewSnap.error && (
-                <div className="mx-2 mt-2 px-3 py-2 bg-red-500/10 border border-red-500/40 rounded text-red-200 text-[11px] flex items-center justify-between gap-2 shrink-0">
-                  <span className="flex items-center gap-2 truncate">
-                    <AlertTriangle className="w-3.5 h-3.5 text-red-300 shrink-0" />
-                    <span className="truncate">{previewSnap.error.message}</span>
+                <div className="mx-2 mt-2 px-3 py-2 bg-red-500/10 border border-red-500/40 rounded text-red-200 text-[11px] flex items-start justify-between gap-2 shrink-0">
+                  <span className="flex items-start gap-2 min-w-0 flex-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-300 shrink-0 mt-0.5" />
+                    {/* <pre>, not a truncated span: preview runtime errors are
+                        now multi-line (entry file, export resolution, the
+                        exact reason) and truncating them to one line hid
+                        exactly the detail the jury needs to see. */}
+                    <pre className="whitespace-pre-wrap break-words max-h-40 overflow-auto flex-1 text-left font-sans">
+                      {previewSnap.error.message}
+                    </pre>
                   </span>
                   <span className="flex items-center gap-1.5 shrink-0">
                     <button
@@ -1267,7 +1298,7 @@ export const UIStudioPage: React.FC = () => {
         {rightPanelOpen && (
           <aside
             style={{ width: `${rightPanelWidth}px` }}
-            className={`shrink-0 h-full min-h-0 flex-col bg-[#101318] border-l border-white/10 ${
+            className={`shrink-0 h-full min-h-0 flex-col bg-[#101318] border-l border-white/10 max-w-full ${
               mobileTab === "assistant" || mobileTab === "inspector"
                 ? "flex w-full absolute inset-0 z-30 md:relative md:w-auto"
                 : "hidden md:flex"
@@ -1297,6 +1328,20 @@ export const UIStudioPage: React.FC = () => {
                   {label}
                 </button>
               ))}
+              {/* Previously there was no way to close this panel at all
+                  (no setRightPanelOpen(false) anywhere), so the preview
+                  could never go full-width. Reopen: mobile tab bar, or
+                  the Assistant button in the preview header. */}
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={() => setRightPanelOpen(false)}
+                className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-white/5 cursor-pointer"
+                title="Close assistant / inspector panel"
+                aria-label="Close assistant / inspector panel"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
 
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col">

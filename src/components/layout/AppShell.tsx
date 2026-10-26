@@ -127,7 +127,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       href: "/settings",
       icon: <Settings className="w-4 h-4 text-[#70C84B]" />,
       active: location.pathname.startsWith("/settings"),
-      description: "Credentials, Gemini, Supabase & OS",
+      description: "Credentials, Gemini, Supabase & environment",
     },
   ];
 
@@ -357,7 +357,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                     ? "Home"
                     : location.pathname.startsWith("/projects")
                     ? "Projects"
-                    : location.pathname.startsWith("/build") || location.pathname.startsWith("/ui-studio")
+                    : location.pathname.startsWith("/ui-studio")
+                    ? "UI Studio"
+                    : location.pathname.startsWith("/build")
                     ? "Build Studio"
                     : location.pathname.startsWith("/testing") || location.pathname.startsWith("/quality")
                     ? "Test & Fix"

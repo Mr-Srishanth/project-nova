@@ -18,6 +18,64 @@ import { fileURLToPath } from "node:url";
 import { projectStorage } from "../storage/projectStorage";
 import { brainStorage } from "../storage/brainStorage";
 
+describe("AUTH/SYNC audit fixes (2026-10-26, offline source guards)", () => {
+  const readSrc = (rel: string) => {
+    const testDir = path.dirname(fileURLToPath(import.meta.url));
+    return fs.readFileSync(path.join(testDir, rel), "utf-8");
+  };
+
+  it("migration aborts without a user, never inserts owner_id = null", () => {
+    const src = readSrc("supabaseMigration.ts");
+    expect(src).not.toContain("user?.id || null");
+    expect(src).toContain("owner_id: user.id");
+    expect(src).toMatch(/if \(!user\)[\s\S]*?Migration aborted/);
+  });
+
+  it("migration scopes the project existence check by owner_id and migrates memories for skipped projects too", () => {
+    const src = readSrc("supabaseMigration.ts");
+    // Owner-scoped existence check on projects.
+    expect(src).toMatch(/from\('projects'\)[\s\S]*?eq\('owner_id', user\.id\)/);
+    // Memories migrate via a helper called for skipped projects as well,
+    // not only inside the just-inserted branch.
+    expect(src).toContain("migrateMemoriesForProject");
+    expect(src).toMatch(/if \(projectInCloud\)[\s\S]*?migrateMemoriesForProject/);
+    // Dedupe memories by (id, owner_id).
+    expect(src).toMatch(/from\('project_memories'\)[\s\S]*?eq\('owner_id', user\.id\)/);
+  });
+
+  it("migration records memory insert failures instead of swallowing them", () => {
+    const src = readSrc("supabaseMigration.ts");
+    expect(src).toMatch(/Failed to migrate memory.*memErr\.message/);
+    expect(src).toContain("memoriesSkipped");
+  });
+
+  it("auth exposes a cached-session fallback for signed-in routing and never hangs the gate on getSession rejection", () => {
+    const src = readSrc("auth.ts");
+    expect(src).toContain("getSignedInUserId");
+    expect(src).toMatch(/getSession\(\)[\s\S]*?\.catch/);
+    const proj = readSrc("supabaseProjectStorage.ts");
+    const brain = readSrc("supabaseBrainStorage.ts");
+    expect(proj).toContain("getSignedInUserId");
+    expect(brain).toContain("getSignedInUserId");
+  });
+
+  it("signed-in read/delete paths never return local data on a network throw", () => {
+    for (const file of ["supabaseProjectStorage.ts", "supabaseBrainStorage.ts"]) {
+      const src = readSrc(file);
+      // The list catch must return [] (the error-object path already did).
+      expect(src).toMatch(/Network error[\s\S]*?return \[\]/);
+      // The delete catch must report failure, not delete a local copy.
+      expect(src).toMatch(/Network throw[\s\S]*?return false/);
+    }
+  });
+
+  it("AuthPanel recovery dispatches the same event AppShell's gate listens for", () => {
+    const panel = readSrc("../../components/auth/AuthPanel.tsx");
+    expect(panel).toContain("PASSWORD_RECOVERED_EVENT");
+    expect(panel).toMatch(/dispatchEvent\(new Event\(PASSWORD_RECOVERED_EVENT\)\)/);
+  });
+});
+
 describe("Supabase Auth + per-user isolation (offline guards)", () => {
   beforeEach(() => {
     localStorage.clear();

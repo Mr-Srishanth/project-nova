@@ -117,7 +117,7 @@ export const CodeReviewPage: React.FC = () => {
   const handleGenerateProposal = async (finding: ReviewFinding) => {
     const artifact = await artifactStorage.getByPath(finding.projectId, finding.filePath);
     if (!artifact) {
-      alert(`Target artifact "${finding.filePath}" not found in project artifacts.`);
+      setApplyResult({ success: false, message: `Target artifact "${finding.filePath}" not found in project artifacts.` });
       return;
     }
 

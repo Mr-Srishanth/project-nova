@@ -15,9 +15,9 @@ import { Button } from "@/components/ui/Button";
 
 interface ExecutionPlanDetailProps {
   plan: ExecutionPlan;
-  onExecuteStep: (step: ExecutionStep) => Promise<void>;
+  onExecuteStep: (step: ExecutionStep, stepsOverride?: ExecutionStep[]) => Promise<ExecutionStep[] | undefined>;
   onApproveStep: (step: ExecutionStep) => Promise<void>;
-  onExecuteAllSteps: () => Promise<void>;
+  onExecuteAllSteps: () => Promise<boolean>;
   isRunningPlan: boolean;
 }
 

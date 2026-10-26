@@ -5,8 +5,11 @@
  * Supabase is configured, every query filters by owner_id = the signed-in
  * user's id AND by project_id, and results are never merged with local
  * memories. Signed out / unconfigured: local browser storage only.
- * Remote failure on a single call falls back to local (offline) for that
- * call only — it is never merged with remote rows.
+ * Remote failure on a signed-in READ or DELETE returns empty / false,
+ * never local memories (same reason as the project adapter: local
+ * memories may belong to a different browser session). Remote failure
+ * on a WRITE still falls back to local — see the project adapter's
+ * KNOWN TRAP note; tightening writes needs caller-level error UI first.
  *
  * Mapping notes (full fidelity, after supabase-schema-fix.sql):
  * - confidence is stored as NUMERIC(3,2) in Supabase (0.00–1.00) and as
@@ -20,10 +23,11 @@
  *   supabase-schema-fix.sql. Only for old rows where verification_state
  *   is NULL is verificationState derived from source/status as a
  *   fallback (user → user_confirmed, ai → ai_proposed, otherwise
- *   unverified). If the schema fix has not been run yet, Supabase
- *   ignores the extra columns on insert/update only if the columns
- *   are absent — in practice run the schema fix first; do not rely on
- *   silent drops.
+ *   unverified). NOTE: if the schema fix has NOT been run, PostgREST
+ *   does NOT silently ignore the extra columns — it errors (PGRST204,
+ *   column not found in schema cache) and the insert/update then falls
+ *   back to local storage, telling the caller success while the memory
+ *   stays local-only. Run the schema fix first; do not rely on drops.
  * - status is passed through as-is (active / superseded / resolved /
  *   archived), matching the migration utility's behaviour.
  */
@@ -36,7 +40,7 @@ import type {
 } from "@/types/memory";
 import { IProjectBrainStorageAdapter, localBrainStorage } from "../storage/brainStorage";
 import { getSupabaseClient } from "./supabaseClient";
-import { getCurrentUser } from "./auth";
+import { getSignedInUserId } from "./auth";
 import { generateId } from "@/lib/utils";
 
 function deriveVerificationState(source: string): ProjectMemory["verificationState"] {
@@ -51,7 +55,9 @@ export class SupabaseBrainStorageAdapter implements IProjectBrainStorageAdapter 
   private async currentUserId(): Promise<string | null> {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
-    return (await getCurrentUser())?.id ?? null;
+    // getSignedInUserId: getUser with cached-session fallback, so a
+    // transient getUser failure does not route to local storage.
+    return getSignedInUserId();
   }
 
   async list(projectId: string): Promise<ProjectMemory[]> {
@@ -72,8 +78,8 @@ export class SupabaseBrainStorageAdapter implements IProjectBrainStorageAdapter 
       }
       return (data ?? []).map(this.mapRowToMemory);
     } catch (err) {
-      console.warn("[Supabase Brain] Network error, offline fallback:", err);
-      return this.localFallback.list(projectId);
+      console.warn("[Supabase Brain] Network error, returning empty (never local):", err);
+      return [];
     }
   }
 
@@ -92,7 +98,8 @@ export class SupabaseBrainStorageAdapter implements IProjectBrainStorageAdapter 
       if (error || !data) return null;
       return this.mapRowToMemory(data);
     } catch {
-      return this.localFallback.getById(id);
+      // Network throw: a miss, never a local lookup (see list()).
+      return null;
     }
   }
 
@@ -199,7 +206,9 @@ export class SupabaseBrainStorageAdapter implements IProjectBrainStorageAdapter 
       await this.localFallback.delete(id).catch(() => null);
       return true;
     } catch {
-      return this.localFallback.delete(id);
+      // Network throw: report failure, do NOT delete the local copy
+      // and report it as a cloud deletion (remote row still exists).
+      return false;
     }
   }
 

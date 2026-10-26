@@ -97,7 +97,7 @@ export const TeamWorkspacePage: React.FC = () => {
                 Multi-Agent Teaming & Collaborative Workspace
               </h1>
               <p className="text-sm text-[#153A52]/70 font-medium">
-                Phase 19: Coordinated autonomous specialist agents with evidence citation, review gates, and consensus
+                Phase 19: Deterministic specialist audits with evidence citation, review gates, and consensus (no LLM agent calls — specialists audit real project data)
               </p>
             </div>
           </div>
@@ -214,7 +214,7 @@ export const TeamWorkspacePage: React.FC = () => {
                           ? 'bg-[#70C84B]/20 text-[#153A52]'
                           : 'bg-amber-100 text-amber-800'
                       }`}>
-                        {currentRun?.isAiGatewayConnected ? 'Online (Gemini)' : 'Local Safe Mode'}
+                        {currentRun?.isAiGatewayConnected ? 'Gateway reachable (deterministic audits only)' : 'Local deterministic mode'}
                       </span>
                     </div>
 
@@ -274,7 +274,7 @@ export const TeamWorkspacePage: React.FC = () => {
                         {currentRun.reviews.filter((r) => r.status === 'approved').length}
                       </div>
                       <div className="text-[11px] font-semibold text-[#153A52]/60 uppercase tracking-wider">
-                        Peer Approvals
+                        Automated Checks Passed
                       </div>
                     </div>
                     <div className="p-3 bg-[#F4F1DF]/30 rounded-xl border border-[#153A52]/5 text-center">

@@ -35,6 +35,7 @@ import {
   onAuthStateChange,
 } from "@/lib/supabase/auth";
 import { migrateLocalStorageToSupabase } from "@/lib/supabase/supabaseMigration";
+import { PASSWORD_RECOVERED_EVENT } from "@/components/auth/AuthPage";
 
 export const AuthPanel: React.FC = () => {
   const { user, loading, configured } = useSupabaseAuth();
@@ -108,6 +109,14 @@ export const AuthPanel: React.FC = () => {
           window.history.replaceState(null, "", window.location.pathname);
         } catch {
           /* ignore: hash cleanup is cosmetic */
+        }
+        // Same event AuthPage fires: AppShell's gate listens for it to
+        // leave recovery mode. Without this, AppShell stayed in
+        // recovery mode (rendering only AuthPage) until a manual reload.
+        try {
+          window.dispatchEvent(new Event(PASSWORD_RECOVERED_EVENT));
+        } catch {
+          /* ignore */
         }
         setMessage("Password updated. You are signed in.");
       } catch (err: any) {
@@ -194,7 +203,7 @@ export const AuthPanel: React.FC = () => {
       try {
         const summary = await migrateLocalStorageToSupabase();
         setMessage(
-          `Moved ${summary.projectsMigrated} project(s) and ${summary.memoriesMigrated} memorie(s) to Supabase.` +
+          `Moved ${summary.projectsMigrated} project(s) and ${summary.memoriesMigrated} memory entries to Supabase.` +
             (summary.errors.length > 0 ? ` ${summary.errors.join(" ")}` : "")
         );
       } catch (err: any) {

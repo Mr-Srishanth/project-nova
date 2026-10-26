@@ -325,8 +325,10 @@ async function resolveBrainStorage(): Promise<IProjectBrainStorageAdapter> {
     const { getSupabaseClient } = await import("@/lib/supabase/supabaseClient");
     const supabase = getSupabaseClient();
     if (!supabase) return localBrainStorage;
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) return localBrainStorage;
+    // Same cached-session fallback as resolveProjectStorage: a transient
+    // getUser error must not route a signed-in user to local memories.
+    const { getSignedInUserId } = await import("@/lib/supabase/auth");
+    if (!(await getSignedInUserId())) return localBrainStorage;
     const { supabaseBrainStorage } = await import(
       "@/lib/supabase/supabaseBrainStorage"
     );

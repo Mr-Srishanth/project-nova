@@ -155,8 +155,12 @@ async function resolveProjectStorage(): Promise<IProjectStorageAdapter> {
     const { getSupabaseClient } = await import("@/lib/supabase/supabaseClient");
     const supabase = getSupabaseClient();
     if (!supabase) return localProjectStorage;
-    const { data } = await supabase.auth.getUser();
-    if (!data.user) return localProjectStorage;
+    // getSignedInUserId: getUser with cached-session fallback. A
+    // transient getUser error (offline) must NOT route a signed-in user
+    // to local storage — the Supabase adapter's own read/delete paths
+    // return empty/false on remote failure, never local data.
+    const { getSignedInUserId } = await import("@/lib/supabase/auth");
+    if (!(await getSignedInUserId())) return localProjectStorage;
     const { supabaseProjectStorage } = await import(
       "@/lib/supabase/supabaseProjectStorage"
     );

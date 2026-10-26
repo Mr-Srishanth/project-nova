@@ -238,7 +238,7 @@ export const OverviewPage: React.FC = () => {
                 onClick={() => navigate(`/ui-studio?project=${activeProject.id}`)}
                 icon={<Play className="w-4 h-4 fill-current" />}
               >
-                Build Studio
+                UI Studio
               </Button>
               <Button
                 variant="secondary"
@@ -425,8 +425,11 @@ export const OverviewPage: React.FC = () => {
             </div>
           </Card>
         ) : filteredProjects.length === 0 ? (
-          <div className="p-8 text-center border-2 border-dashed border-border rounded-tactile bg-surface">
+          <div className="p-8 text-center border-2 border-dashed border-border rounded-tactile bg-surface space-y-3">
             <p className="text-xs text-foreground-muted">No projects found matching "{searchQuery}".</p>
+            <Button variant="outline" size="sm" onClick={() => setSearchQuery("")}>
+              Clear Search
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

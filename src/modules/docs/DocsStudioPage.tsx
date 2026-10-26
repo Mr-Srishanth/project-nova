@@ -288,7 +288,7 @@ export const DocsStudioPage: React.FC = () => {
                 Knowledge Synchronization Hub: {selectedProject?.name}
               </span>
               <p className="text-xs text-foreground-muted">
-                {documents.length} verified documentation records registered • {totalDriftCount} potential drift finding(s)
+                {documents.length} generated documentation records registered • {totalDriftCount} potential drift finding(s)
               </p>
             </div>
           </div>

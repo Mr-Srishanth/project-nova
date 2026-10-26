@@ -69,6 +69,78 @@ describe("previewBuilder verified mount", () => {
     expect(preview.html).toContain("Entry Component Not Found");
   });
 
+  it("reports the exact render error instead of the generic empty-root message", () => {
+    const preview = buildTargetProjectPreviewHtml("Demo", [
+      art("src/app/App.tsx", `export const App = () => <div>Hello</div>;`),
+    ]);
+    // An error boundary around the mounted component is the deterministic
+    // render-error channel (React unmounts on a render throw and only logs
+    // it, so window.onerror alone cannot be trusted for the exact error).
+    expect(preview.html).toContain("PreviewErrorBoundary");
+    expect(preview.html).toContain("getDerivedStateFromError");
+    expect(preview.html).toContain("componentDidCatch");
+    expect(preview.html).toContain("Render error in");
+    expect(preview.html).toContain("componentStack");
+    // React's own render-error log is forwarded from console.error.
+    expect(preview.html).toContain("The above error occurred");
+    // The old generic message must be gone: it named no file, component,
+    // export, or reason.
+    expect(preview.html).not.toContain("mounted but the preview root stayed empty");
+  });
+
+  it("explains an empty root exactly: entry file, component, export resolution, null-return vs throw", () => {
+    const preview = buildTargetProjectPreviewHtml("Demo", [
+      art("src/app/App.tsx", `export const App = () => null;`),
+    ]);
+    expect(preview.html).toContain("neither #preview-root, #root, nor a portal");
+    // The runtime message composes the file at mount time from
+    // window.__ENTRY_FILE__ (set to src/app/App.tsx for this fixture).
+    expect(preview.html).toContain("Entry file: ");
+    expect(preview.html).toContain("window.__ENTRY_FILE__");
+    expect(preview.html).toContain("Resolved via:");
+    expect(preview.html).toContain("Entry exports found:");
+    expect(preview.html).toContain("returned null, false, an empty fragment");
+    expect(preview.html).toContain("gated on state that never resolved");
+    // Portal-only and legacy-bootstrap output count as mounted, not empty.
+    expect(preview.html).toContain("hasOutputAnywhere");
+    expect(preview.html).toContain('id="root"');
+    expect(preview.html).toContain("bootstrapped itself");
+    // Slow first paints get 10s (200 x 50ms), not the old 3s-then-give-up.
+    expect(preview.html).toContain("verifyAttempts < 200");
+    // The window fallback scan prefers App/Main/Root over the first
+    // uppercase function (which could be a null-returning helper).
+    expect(preview.html).toContain("window scan (preferred)");
+  });
+
+  it("passes unknown-package components through instead of dropping their children", () => {
+    const preview = buildTargetProjectPreviewHtml("Demo", [
+      art(
+        "src/app/App.tsx",
+        `import { BrowserRouter, Routes, Route } from "react-router-dom";\nexport const App = () => (<BrowserRouter><Routes><Route path="/" element={<div>Home</div>} /></Routes></BrowserRouter>);`
+      ),
+    ]);
+    // Single-file path: unknown packages render children/element, so a
+    // router/provider wrapper cannot swallow the app into an empty root.
+    expect(preview.html).toContain("__PreviewPassthrough");
+    expect(preview.html).toContain("__PREVIEW_UNKNOWN_IMPORTS__");
+    expect(preview.html).toContain("react-router-dom");
+  });
+
+  it("multi-module missing modules become passthroughs, not null components", () => {
+    const preview = buildTargetProjectPreviewHtml("Demo", [
+      art(
+        "src/app/App.tsx",
+        `import { Widget } from "./Widget";\nimport { BrowserRouter } from "react-router-dom";\nexport const App = () => (<BrowserRouter><Widget /></BrowserRouter>);`
+      ),
+      art("src/app/Widget.tsx", `export const Widget = () => <span>W</span>;`),
+    ]);
+    expect(preview.html).toContain("__registerModule");
+    expect(preview.html).toContain("__PreviewPassthrough");
+    // The old fallback ({ default: () => null }, named bindings undefined)
+    // threw "Element type is invalid" at render and emptied the root.
+    expect(preview.html).not.toContain("default: () => null");
+  });
+
   it("auto-fixes a missing comma in preview only and says so (saved code untouched)", () => {
     const preview = buildTargetProjectPreviewHtml("Demo", [
       art(

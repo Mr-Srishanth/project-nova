@@ -95,7 +95,7 @@ export const ProjectBrainPanel: React.FC<ProjectBrainPanelProps> = ({ projectId,
     await loadMemories();
   };
 
-  const handleDelete = async (id: string, title: string) => {
+  const handleDelete = async (id: string, _title: string) => {
     // Two-click in-app confirm: window.confirm popups are unreliable
     // (blocked/dismissed in some browsers), which made Delete appear dead.
     if (confirmDeleteId !== id) {

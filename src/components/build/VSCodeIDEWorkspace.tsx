@@ -678,7 +678,7 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
     >
       {/* Top IDE Application Bar */}
       <div className="h-10 bg-[#2d2d2d] border-b border-[#1e1e1e] flex items-center justify-between px-3 text-xs select-none">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Code2 className="w-4 h-4 text-emerald-400" />
           <span className="font-bold text-white tracking-wide">ProjectNova Studio IDE</span>
           <span className="text-[10px] text-gray-400 border border-gray-600 px-1.5 py-0.2 rounded font-mono">
@@ -686,8 +686,10 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
           </span>
         </div>
 
-        {/* Global Toolbar Shortcuts */}
-        <div className="flex items-center gap-1.5">
+        {/* Global Toolbar Shortcuts — scrolls horizontally on narrow
+            screens instead of clipping buttons off the right edge
+            (container is overflow-hidden). */}
+        <div className="flex items-center gap-1.5 overflow-x-auto min-w-0">
           <button
             onClick={handleSaveActive}
             disabled={!selectedPath || !isCurrentDirty}
@@ -821,7 +823,7 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
 
         {/* Primary Side Bar: File Explorer */}
         {activityTab === "explorer" && (
-          <div className="w-64 shrink-0 h-full">
+          <div className="w-64 max-w-[85vw] shrink-0 h-full">
             <IDEFileExplorer
               files={artifacts}
               plannedPaths={plannedPaths}
@@ -910,7 +912,7 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
 
         {/* Optional Right AI Assistant Panel */}
         {aiAssistantOpen && (
-          <div className="w-80 shrink-0 h-full">
+          <div className="w-80 max-w-[85vw] shrink-0 h-full">
             <IDEAIAssistant
               projectId={projectId}
               projectName={projectName}
@@ -923,7 +925,7 @@ export const VSCodeIDEWorkspace: React.FC<VSCodeIDEWorkspaceProps> = ({
 
         {/* AI Code Explainer Drawer/Panel */}
         {explainerOpen && selectedPath && (
-          <div className="w-96 shrink-0 h-full border-l border-white/10 z-20">
+          <div className="w-96 max-w-[85vw] shrink-0 h-full border-l border-white/10 z-20">
             <AICodeExplainerPanel
               explanation={explanationResult}
               mode={explainerMode}

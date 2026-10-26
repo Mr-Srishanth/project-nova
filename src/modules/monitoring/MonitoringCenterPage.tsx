@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { projectStorage } from "@/lib/storage/projectStorage";
 import { monitoringStorage } from "@/lib/storage/monitoringStorage";
+import { deploymentStorage } from "@/lib/storage/deploymentStorage";
 import { healthObservationService } from "@/lib/monitoring/healthObservationService";
 import { alertEvaluationEngine } from "@/lib/monitoring/alertEvaluationEngine";
 import { incidentManagementService } from "@/lib/monitoring/incidentManagementService";
@@ -38,6 +39,8 @@ export const MonitoringCenterPage: React.FC = () => {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [newTargetName, setNewTargetName] = useState("");
+  const [newTargetUrl, setNewTargetUrl] = useState("");
 
   // Load project list
   useEffect(() => {
@@ -61,24 +64,46 @@ export const MonitoringCenterPage: React.FC = () => {
       const proj = await projectStorage.getById(selectedProjectId);
       setSearchParams({ projectId: selectedProjectId });
 
-      // Load Targets
+      // Load Targets. NEVER seed a fabricated endpoint: a previous build
+      // auto-created "https://projectnova-preview.vercel.app/health" for
+      // every project — that URL is not the user's deployment, so its
+      // health result was meaningless. Migrate it away, and seed only
+      // from a real deployment record (provider-supplied URL) if one
+      // exists; otherwise the user adds their real URL below.
+      const FAKE_LEGACY_URL = 'https://projectnova-preview.vercel.app/health';
+      const realDeploymentUrls = new Set(
+        deploymentStorage.listRecords(selectedProjectId)
+          .map((r) => r.deploymentUrl)
+          .filter((u): u is string => Boolean(u))
+      );
       let curTargets = monitoringStorage.listTargets(selectedProjectId);
+      for (const t of curTargets) {
+        if (t.endpointUrl === FAKE_LEGACY_URL && !realDeploymentUrls.has(t.endpointUrl)) {
+          monitoringStorage.deleteTarget(selectedProjectId, t.id);
+        }
+      }
+      curTargets = monitoringStorage.listTargets(selectedProjectId);
       if (curTargets.length === 0) {
-        const defaultTarget: MonitoringTarget = {
-          id: `tgt-${selectedProjectId}-health`,
-          projectId: selectedProjectId,
-          targetType: 'deployment',
-          name: `${proj?.name || 'Project'} Public Health`,
-          endpointUrl: 'https://projectnova-preview.vercel.app/health',
-          providerId: 'vercel',
-          environment: 'production',
-          currentState: 'unknown',
-          evidenceSource: 'live_http_check',
-          enabled: true,
-          freshnessThresholdSeconds: 300
-        };
-        monitoringStorage.saveTarget(defaultTarget);
-        curTargets = [defaultTarget];
+        const latestLive = deploymentStorage.listRecords(selectedProjectId)
+          .filter((r) => r.deploymentUrl && r.status === 'succeeded')
+          .sort((a, b) => (b.completedAt || b.requestedAt).localeCompare(a.completedAt || a.requestedAt))[0];
+        if (latestLive?.deploymentUrl) {
+          const seeded: MonitoringTarget = {
+            id: `tgt-${selectedProjectId}-deploy`,
+            projectId: selectedProjectId,
+            targetType: 'deployment',
+            name: `${proj?.name || 'Project'} Deployment`,
+            endpointUrl: latestLive.deploymentUrl,
+            providerId: latestLive.providerId,
+            environment: latestLive.targetEnvironment,
+            currentState: 'unknown',
+            evidenceSource: 'live_http_check',
+            enabled: true,
+            freshnessThresholdSeconds: 300
+          };
+          monitoringStorage.saveTarget(seeded);
+          curTargets = [seeded];
+        }
       }
       setTargets(curTargets);
 
@@ -430,6 +455,61 @@ export const MonitoringCenterPage: React.FC = () => {
       {/* TAB 2: MONITORING TARGETS */}
       {activeTab === "targets" && (
         <div className="space-y-4">
+          <form
+            className="bg-white p-4 rounded-xl border border-[#153A52]/10 shadow-sm flex flex-col md:flex-row gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const name = newTargetName.trim();
+              const url = newTargetUrl.trim();
+              if (!selectedProjectId || !name || !url) return;
+              try {
+                const parsed = new URL(url);
+                if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('bad protocol');
+              } catch {
+                setNotice('Enter a valid http(s) endpoint URL for the target.');
+                return;
+              }
+              const target: MonitoringTarget = {
+                id: `tgt-${Date.now()}`,
+                projectId: selectedProjectId,
+                targetType: 'deployment',
+                name,
+                endpointUrl: url,
+                environment: 'production',
+                currentState: 'unknown',
+                evidenceSource: 'live_http_check',
+                enabled: true,
+                freshnessThresholdSeconds: 300
+              };
+              monitoringStorage.saveTarget(target);
+              setTargets(monitoringStorage.listTargets(selectedProjectId));
+              setNewTargetName('');
+              setNewTargetUrl('');
+              setNotice(`Monitoring target '${name}' added. Click 'Check Health Now' for a live HTTP check.`);
+            }}
+          >
+            <input
+              value={newTargetName}
+              onChange={(e) => setNewTargetName(e.target.value)}
+              placeholder="Target name (e.g. My App Production)"
+              className="flex-1 px-3 py-2 border border-[#153A52]/20 rounded-lg text-xs"
+            />
+            <input
+              value={newTargetUrl}
+              onChange={(e) => setNewTargetUrl(e.target.value)}
+              placeholder="https://your-deployed-app.example/health"
+              className="flex-[2] px-3 py-2 border border-[#153A52]/20 rounded-lg text-xs font-mono"
+            />
+            <button type="submit" className="px-4 py-2 bg-[#153A52] text-white rounded-lg text-xs font-bold">
+              Add Target
+            </button>
+          </form>
+          {targets.length === 0 && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs text-amber-900">
+              No monitoring targets yet. Add your real deployed URL above — no default endpoint is assumed,
+              and health checks only report live HTTP results for URLs you add (or a deployment this app dispatched).
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {targets.map((tgt) => (
               <div key={tgt.id} className="bg-white p-5 rounded-xl border border-[#153A52]/10 shadow-sm space-y-3">
@@ -465,7 +545,17 @@ export const MonitoringCenterPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-2 flex justify-end">
+                <div className="pt-2 flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      monitoringStorage.deleteTarget(selectedProjectId, tgt.id);
+                      setTargets(monitoringStorage.listTargets(selectedProjectId));
+                      setNotice(`Monitoring target '${tgt.name}' removed.`);
+                    }}
+                    className="px-3 py-1.5 bg-white border border-red-200 text-red-700 hover:bg-red-50 rounded-lg text-xs font-semibold"
+                  >
+                    Remove
+                  </button>
                   <button
                     onClick={() => handleRefreshTarget(tgt)}
                     disabled={isRefreshing}

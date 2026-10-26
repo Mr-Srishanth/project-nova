@@ -746,7 +746,7 @@ Implement the real functional requirements of the project. If this is a car game
               </div>
 
               {selectedProject.blueprint ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -796,7 +796,7 @@ Implement the real functional requirements of the project. If this is a car game
 
       {/* Notice if Blueprint structure is incomplete or truncated — Hidden in Full-Screen IDE mode */}
       {!isFullscreenIDE && blueprintModel.isTruncatedOrExample && selectedProject?.blueprint && (
-        <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-tactile flex items-start justify-between gap-3 shadow-hard-sm">
+        <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-tactile flex flex-col sm:flex-row items-start justify-between gap-3 shadow-hard-sm">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
@@ -808,7 +808,7 @@ Implement the real functional requirements of the project. If this is a car game
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               onClick={handleExpandBlueprintTree}

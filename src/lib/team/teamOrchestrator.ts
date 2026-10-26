@@ -23,6 +23,7 @@ import { qualityStorage } from '../storage/qualityStorage';
 import { releaseStorage } from '../storage/releaseStorage';
 import { deploymentStorage } from '../storage/deploymentStorage';
 import { repositoryStorage } from '../storage/repositoryStorage';
+import { artifactStorage } from '../storage/artifactStorage';
 
 export interface PlanGenerationRequest {
   projectId: string;
@@ -278,14 +279,24 @@ export class TeamOrchestrator {
           humanSignoffRequired: task.assignedRole === 'release_manager' || task.assignedRole === 'security_reviewer'
         });
 
-        // Automatically record initial reviewer assessment
-        consensusEngine.evaluateReview(
-          review.id,
-          run.projectId,
-          'approved',
-          `Verified by ${SPECIALIST_AGENTS[reviewerRole].title} with ${outcome.evidence.length} evidence citation(s).`
-        );
-        run.reviews.push(review);
+        // Automated evidence check only — NOT a human peer approval. A
+        // review is marked approved only when the task actually produced
+        // evidence citations; otherwise it is changes_requested so the UI
+        // never counts an evidence-free run as "approved".
+        const evaluated = outcome.evidence.length > 0
+          ? consensusEngine.evaluateReview(
+              review.id,
+              run.projectId,
+              'approved',
+              `Automated evidence check by ${SPECIALIST_AGENTS[reviewerRole].title}: ${outcome.evidence.length} evidence citation(s) recorded. This is a deterministic check, not a human peer review.`
+            )
+          : consensusEngine.evaluateReview(
+              review.id,
+              run.projectId,
+              'changes_requested',
+              `Automated evidence check by ${SPECIALIST_AGENTS[reviewerRole].title}: no evidence citations recorded, so approval is withheld.`
+            );
+        run.reviews.push(evaluated);
       }
     }
 
@@ -337,44 +348,60 @@ export class TeamOrchestrator {
         const blueprintTitle = proj?.blueprint?.title || 'Default System Topology';
         const repoIndex = await repositoryStorage.getIndex(task.projectId);
         const fileCount = repoIndex?.files?.length || 0;
+        const artifacts = await artifactStorage.list(task.projectId);
+        const generatedCount = artifacts.filter((a) => a.status === 'generated' || a.status === 'approved').length;
         evidence.push({
           sourceType: 'repository_file',
           idOrPath: repoIndex?.sourceName || 'local_repo',
-          snippet: `Examined ${fileCount} files in repository. Blueprint titled: ${blueprintTitle}`,
+          snippet: `Examined ${fileCount} files in repository index and ${artifacts.length} Build Studio artifacts. Blueprint titled: ${blueprintTitle}`,
           confidence: 0.95
         });
         return {
-          summary: `Audited architectural layout. Verified ${fileCount} tracked files against blueprint "${blueprintTitle}". No fatal architectural divergence detected.`,
+          // No divergence verdict: this audit counts files, it does not diff
+          // blueprint plans against artifacts, so it must not claim otherwise.
+          summary: `Audited architectural layout: ${fileCount} files in the repository index, ${artifacts.length} Build Studio artifacts (${generatedCount} generated/approved), blueprint "${blueprintTitle}". Divergence was not computed — run Quality static analysis for a file-by-file check.`,
           evidence
         };
       }
 
       case 'security_reviewer': {
         const assessment = await qualityStorage.getLatestAssessment(task.projectId);
-        const issueCount = assessment?.findings?.length || 0;
         evidence.push({
           sourceType: 'security_finding',
           idOrPath: 'security_audit',
-          snippet: `Found ${issueCount} security issues recorded.`,
+          snippet: assessment
+            ? `Latest assessment recorded ${assessment.findings?.length || 0} findings.`
+            : 'No quality assessment has been recorded for this project yet.',
           confidence: 0.98
         });
+        if (!assessment) {
+          return {
+            summary: 'No security assessment has run for this project yet, so zero findings cannot be confirmed. Run a Quality assessment first.',
+            evidence
+          };
+        }
+        const issueCount = assessment.findings?.length || 0;
         return {
           summary: issueCount === 0
-            ? 'Static security audit confirmed zero high-severity findings or leaked credentials.'
-            : `Identified ${issueCount} static security issues requiring triage before deployment.`,
+            ? 'Latest recorded security assessment lists zero findings. (This reflects the last assessment run, not a fresh scan.)'
+            : `Latest recorded assessment lists ${issueCount} security findings requiring triage before deployment.`,
           evidence
         };
       }
 
       case 'builder_agent': {
+        const artifacts = await artifactStorage.list(task.projectId);
+        const generatedCount = artifacts.filter((a) => a.status === 'generated' || a.status === 'approved').length;
+        const pendingCount = artifacts.length - generatedCount;
         evidence.push({
           sourceType: 'artifact',
           idOrPath: 'build_manifest',
-          snippet: 'Scoped module components and formulated clean implementation scaffold.',
+          snippet: `${artifacts.length} Build Studio artifacts on record (${generatedCount} generated/approved, ${pendingCount} pending).`,
           confidence: 0.92
         });
         return {
-          summary: 'Scaffolded modular components and aligned file generation proposals with Project Architect guidelines.',
+          // This role audits build state; it creates no files itself.
+          summary: `Build-state audit: ${artifacts.length} artifacts on record (${generatedCount} generated/approved, ${pendingCount} pending). No files were created by this audit — generate them in Build Studio.`,
           evidence
         };
       }
@@ -408,8 +435,10 @@ export class TeamOrchestrator {
           confidence: 1.0
         });
         return {
+          // Configs are registered targets, not preflight results: preflight
+          // runs separately in the Deployment Center and is not checked here.
           summary: configs.length > 0
-            ? `Release governance completed. ${configs.length} targets preflight-validated.`
+            ? `Release audit: ${configs.length} deployment target(s) registered, latest release ${latestRelease?.version || 'none'}. Preflight was not run by this audit — run it in the Deployment Center before deploying.`
             : 'Release audit noted 0 active deployment targets registered. Deployment recommendation deferred.',
           evidence
         };

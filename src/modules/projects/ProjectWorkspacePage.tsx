@@ -211,7 +211,7 @@ export const ProjectWorkspacePage: React.FC = () => {
         <div className="max-w-md mx-auto space-y-4">
           <h2 className="text-xl font-display font-bold text-foreground">Project Not Found</h2>
           <p className="text-xs text-foreground-muted">
-            The requested project ID does not exist in local storage.
+            The requested project ID does not exist in your workspace.
           </p>
           <Button onClick={() => navigate("/projects")}>Back to Projects</Button>
         </div>
@@ -275,7 +275,7 @@ export const ProjectWorkspacePage: React.FC = () => {
         <Card className="bg-[#FAF7ED] border-2 border-border shadow-hard space-y-4">
           <div className="flex items-center justify-between border-b border-border/20 pb-2">
             <h3 className="font-display font-bold text-sm text-foreground">Edit Project Metadata</h3>
-            <span className="text-xs font-mono text-foreground-muted">Updates persist in local storage</span>
+            <span className="text-xs font-mono text-foreground-muted">Updates save to your workspace</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input

@@ -474,7 +474,26 @@ export function buildTargetProjectPreviewHtml(
 
         if (!resolvedId) {
           console.warn("[Preview Bundler] Missing module:", specifier, "imported by", currentFile);
-          return { __esModule: true, default: () => null };
+          // Jury-blocking fix: the old fallback returned a null component as default
+          // with every named binding undefined, so an app importing a package
+          // the preview does not bundle (react-router-dom, framer-motion, ...)
+          // either rendered nothing or threw "Element type is invalid" during
+          // render — and React then unmounted the root, surfacing only the
+          // generic "no rendered output" error. A passthrough component
+          // renders its children/element instead, so wrapper components
+          // (routers, providers, motion wrappers) no longer eat the app, and
+          // the specifier is recorded for the empty-output diagnostic.
+          if (!window.__PREVIEW_UNKNOWN_IMPORTS__) window.__PREVIEW_UNKNOWN_IMPORTS__ = [];
+          if (window.__PREVIEW_UNKNOWN_IMPORTS__.indexOf(specifier) === -1) {
+            window.__PREVIEW_UNKNOWN_IMPORTS__.push(specifier);
+          }
+          const __previewPassthrough = function __PreviewPassthrough(props) {
+            const content = props && props.children !== undefined ? props.children : (props && props.element !== undefined ? props.element : null);
+            return window.React.createElement("div", null, content);
+          };
+          return new Proxy({ __esModule: true, default: __previewPassthrough }, {
+            get: function (t, prop) { if (prop in t) return t[prop]; return __previewPassthrough; }
+          });
         }
 
         if (__cache[resolvedId]) {
@@ -589,13 +608,27 @@ export function buildTargetProjectPreviewHtml(
   const __previewMockIcon = function MockIcon(props) {
     return window.React.createElement("svg", { ...props, xmlns: "http://www.w3.org/2000/svg", width: props.size || 24, height: props.size || 24, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", className: props.className || "" }, window.React.createElement("circle", { cx: 12, cy: 12, r: 10 }));
   };
+  // Passthrough for components from packages the preview does not bundle
+  // (react-router-dom, framer-motion, ...): unlike the old mock-icon, which
+  // rendered an svg and DROPPED children, this renders children/element, so
+  // a <BrowserRouter>/<Routes>/provider wrapper cannot silently swallow the
+  // whole app and leave the preview root empty. Lucide icons keep the svg
+  // mock above; this branch is only for unknown packages.
+  const __previewPassthrough = function __PreviewPassthrough(props) {
+    const content = props && props.children !== undefined ? props.children : (props && props.element !== undefined ? props.element : null);
+    return window.React.createElement("div", null, content);
+  };
   const __previewRequire = function (specifier) {
     if (specifier === "react") return Object.assign({ default: window.React, __esModule: true }, window.React);
     if (specifier === "react-dom" || specifier === "react-dom/client") return Object.assign({ default: window.ReactDOM, __esModule: true }, window.ReactDOM);
     if (specifier === "lucide-react") {
       return new Proxy({}, { get: function (t, prop) { if (prop === "__esModule") return true; if (prop === "default") return __previewMockIcon; return __previewMockIcon; } });
     }
-    return new Proxy({ __esModule: true, default: __previewMockIcon }, { get: function (t, prop) { if (prop in t) return t[prop]; return __previewMockIcon; } });
+    if (!window.__PREVIEW_UNKNOWN_IMPORTS__) window.__PREVIEW_UNKNOWN_IMPORTS__ = [];
+    if (window.__PREVIEW_UNKNOWN_IMPORTS__.indexOf(specifier) === -1) {
+      window.__PREVIEW_UNKNOWN_IMPORTS__.push(specifier);
+    }
+    return new Proxy({ __esModule: true, default: __previewPassthrough }, { get: function (t, prop) { if (prop in t) return t[prop]; return __previewPassthrough; } });
   };
   const require = __previewRequire;
   const exports = __previewExports;
@@ -653,6 +686,11 @@ ${code}
 </head>
 <body>
   <div id="preview-root"></div>
+  <!-- Legacy bootstrap target: generated src/main.tsx files render into
+       #root (guarded by a rootEl check), not #preview-root. Without this
+       node their own bootstrap silently renders nothing while the host
+       mount below reports "Entry Component Not Found". -->
+  <div id="root"></div>
 
   <script>
     const CURRENT_BUILD_ID = "${buildId}";
@@ -751,6 +789,34 @@ ${code}
       }, "*");
     });
 
+    // React 18 production does not reliably surface a render/commit error
+    // through window.onerror: it logs the failure through console.error
+    // ("The above error occurred in the <X> component") and unmounts the
+    // root, leaving it empty. Without this forwarder that error is lost
+    // and the mount verifier below can only report the generic
+    // "no rendered output" message. Only the render-error signature is
+    // forwarded (never warnings), and only once per build, so ordinary
+    // console noise can never fail a preview.
+    (function () {
+      const origConsoleError = console.error.bind(console);
+      console.error = function () {
+        try {
+          const text = Array.prototype.map.call(arguments, function (a) {
+            return a && a.message ? a.message : String(a);
+          }).join(" ");
+          if (text.indexOf("The above error occurred") !== -1 && !window.__PREVIEW_RENDER_ERROR_REPORTED__) {
+            window.__PREVIEW_RENDER_ERROR_REPORTED__ = true;
+            window.parent.postMessage({
+              type: "PREVIEW_RUNTIME_ERROR",
+              buildId: CURRENT_BUILD_ID,
+              message: "Render error in " + (window.__ENTRY_FILE__ || "entry") + ": " + text
+            }, "*");
+          }
+        } catch (forwardErr) { /* never let reporting break the app */ }
+        return origConsoleError.apply(console, arguments);
+      };
+    })();
+
     // Element selection inspector with link interception
     document.addEventListener("click", (e) => {
       if (document.body.dataset.inspectMode !== "true") return;
@@ -827,48 +893,135 @@ ${code}
     try {
       ${transpiledApp}
 
-      let AppToMount = window.App || window.__DEFAULT_APP__;
-      
-      // Fallback search in window if not assigned directly
+      // Export resolution, recorded for every error path below so a failure
+      // always says WHICH export was found (or that none was), instead of
+      // the old generic message. __previewExports exists on the single-file
+      // path, __entryExports on the multi-module path; typeof guards keep
+      // the absent one from throwing.
+      let exportKeys = [];
+      try { if (typeof __previewExports !== "undefined" && __previewExports) exportKeys = Object.keys(__previewExports); } catch (e) { /* ignore */ }
+      try { if (typeof __entryExports !== "undefined" && __entryExports) exportKeys = Object.keys(__entryExports); } catch (e) { /* ignore */ }
+      let resolution = "none";
+      let AppToMount = null;
+      if (window.App) { AppToMount = window.App; resolution = "window.App"; }
+      else if (window.__DEFAULT_APP__) { AppToMount = window.__DEFAULT_APP__; resolution = "window.__DEFAULT_APP__"; }
+
+      // Fallback search in window if not assigned directly. The old scan
+      // took the FIRST uppercase window function, which could be any
+      // helper component (a Modal that returns null without props, a
+      // utility) rather than the app — and a null-returning pick produced
+      // exactly the generic empty-root error. Prefer App/Main/Root first.
       if (!AppToMount && typeof window !== 'undefined') {
-        for (const key of Object.keys(window)) {
-          if (typeof window[key] === 'function' && /^[A-Z]/.test(key) && key !== 'React' && key !== 'ReactDOM') {
-            AppToMount = window[key];
-            break;
+        const windowKeys = Object.keys(window);
+        const preferred = ["App", "Main", "Root"].find(function (k) { return typeof window[k] === 'function'; });
+        if (preferred) {
+          AppToMount = window[preferred];
+          resolution = "window scan (preferred): " + preferred;
+        } else {
+          for (const key of windowKeys) {
+            if (typeof window[key] === 'function' && /^[A-Z]/.test(key) && key !== 'React' && key !== 'ReactDOM') {
+              AppToMount = window[key];
+              resolution = "window scan (first match): " + key;
+              break;
+            }
           }
         }
       }
 
       const rootEl = document.getElementById("preview-root");
+      const legacyRootEl = document.getElementById("root");
+      const nodeHasOutput = function (el) {
+        return !!el && (el.childElementCount > 0 || (el.textContent || "").trim().length > 0);
+      };
+      // Output outside #preview-root counts too: an app that renders only
+      // through a portal, or that bootstrapped itself into #root, IS
+      // visible in the iframe even though #preview-root is empty. The old
+      // check counted only #preview-root, so portal-only apps failed with
+      // the generic message despite rendering.
+      const hasOutputAnywhere = function () {
+        if (nodeHasOutput(rootEl) || nodeHasOutput(legacyRootEl)) return true;
+        return Array.prototype.some.call(document.body.children, function (el) {
+          return el.id !== "preview-root" && el.id !== "root" && el.tagName !== "SCRIPT" && el.tagName !== "STYLE" && nodeHasOutput(el);
+        });
+      };
+      const componentName = AppToMount ? (AppToMount.displayName || AppToMount.name || "App") : "App";
+      const unknownImports = (window.__PREVIEW_UNKNOWN_IMPORTS__ || []).join(", ");
+      const describeResolution = function () {
+        return "Entry file: " + (window.__ENTRY_FILE__ || "src/app/App.tsx")
+          + " | Component: " + componentName
+          + " | Resolved via: " + resolution
+          + " | Entry exports found: " + (exportKeys.length ? exportKeys.join(", ") : "none")
+          + (unknownImports ? " | Unbundled imports substituted in preview (not real packages): " + unknownImports : "");
+      };
 
       if (AppToMount && rootEl) {
+        // Error boundary: the deterministic render-error channel. React
+        // catches render/commit errors, unmounts the root and (in
+        // production) logs to console.error; without a boundary the host
+        // cannot tell a thrown render error from a component that returned
+        // null, and both surfaced as the same generic message.
+        class PreviewErrorBoundary extends window.React.Component {
+          constructor(props) {
+            super(props);
+            this.state = { error: null };
+          }
+          static getDerivedStateFromError(error) { return { error: error }; }
+          componentDidCatch(error, info) {
+            if (!window.__PREVIEW_RENDER_ERROR_REPORTED__) {
+              window.__PREVIEW_RENDER_ERROR_REPORTED__ = true;
+              window.parent.postMessage({
+                type: "PREVIEW_RUNTIME_ERROR",
+                buildId: CURRENT_BUILD_ID,
+                message: "Render error in " + componentName + " (" + (window.__ENTRY_FILE__ || "entry") + "): "
+                  + (error && error.message ? error.message : String(error))
+                  + (info && info.componentStack ? String.fromCharCode(10) + "Component stack:" + info.componentStack : "")
+                  + String.fromCharCode(10) + describeResolution()
+              }, "*");
+            }
+          }
+          render() {
+            if (this.state.error) return null;
+            return window.React.createElement(AppToMount, null);
+          }
+        }
         const root = ReactDOM.createRoot(rootEl);
-        root.render(window.React.createElement(AppToMount, null));
+        root.render(window.React.createElement(PreviewErrorBoundary, null));
         // Verify the commit actually produced DOM before reporting Ready.
         // React 18 renders asynchronously: a bare render() call is NOT proof
         // of a mount, and reporting success immediately produced false
         // "Ready" states (and masked real mount failures as timeouts).
+        // Budget raised 3s -> 10s (200 x 50ms): a valid app whose first
+        // paint waits on fonts, images or a slow effect was previously
+        // failed at 3s and the verifier then stopped polling, so even a
+        // render at 4s could never recover. The host watchdog (45s) still
+        // bounds the total wait.
         let verifyAttempts = 0;
         const verifyMount = () => {
-          const hasOutput = rootEl.childElementCount > 0 || (rootEl.textContent || "").trim().length > 0;
-          if (hasOutput) {
+          if (hasOutputAnywhere()) {
             isAppMounted = true;
             window.parent.postMessage({
               type: "PREVIEW_MOUNTED_SUCCESS",
               buildId: CURRENT_BUILD_ID,
-              componentName: AppToMount.displayName || AppToMount.name || "App"
+              componentName: componentName
             }, "*");
             return;
           }
+          // A render error was already reported exactly (boundary or
+          // console forwarder): stop polling instead of overwriting it
+          // with the generic message after the budget expires.
+          if (window.__PREVIEW_RENDER_ERROR_REPORTED__) return;
           verifyAttempts++;
-          if (verifyAttempts < 60) {
+          if (verifyAttempts < 200) {
             setTimeout(verifyMount, 50);
             return;
           }
           window.parent.postMessage({
             type: "PREVIEW_RUNTIME_ERROR",
             buildId: CURRENT_BUILD_ID,
-            message: "Application produced no rendered output: the root component mounted but the preview root stayed empty. Check that the component returns JSX and does not bail out before rendering."
+            message: "Application produced no rendered output: the root component mounted without throwing, but neither #preview-root, #root, nor a portal produced any DOM after 10s. "
+              + "No render error was thrown, so the component returned null, false, an empty fragment, or only whitespace — or it is gated on state that never resolved (a loading / auth / data-fetch gate whose data never arrives in the preview). "
+              + "Check that the component returns JSX on its first render and that any loading gate can resolve inside the preview. "
+              + describeResolution()
           }, "*");
         };
         if (typeof requestAnimationFrame === "function") {
@@ -876,10 +1029,25 @@ ${code}
         } else {
           setTimeout(verifyMount, 0);
         }
+      } else if (!AppToMount && nodeHasOutput(legacyRootEl)) {
+        // No host-mountable export, but the entry file bootstrapped itself
+        // (src/main.tsx style: its own createRoot into #root) and produced
+        // output. That IS a mounted app; the old code reported
+        // "Entry Component Not Found" and overwrote #preview-root with an
+        // error panel even though the app was visible.
+        isAppMounted = true;
+        window.parent.postMessage({
+          type: "PREVIEW_MOUNTED_SUCCESS",
+          buildId: CURRENT_BUILD_ID,
+          componentName: window.__ENTRY_FILE__ || "entry"
+        }, "*");
       } else {
-        const reason = !rootEl 
-          ? "DOM node #preview-root was not found" 
-          : "Could not locate export for App or default component in " + (window.__ENTRY_FILE__ || "src/app/App.tsx");
+        const reason = !rootEl
+          ? "DOM node #preview-root was not found"
+          : "Could not locate export for App or default component in " + (window.__ENTRY_FILE__ || "src/app/App.tsx")
+            + " | Resolved via: " + resolution
+            + " | Entry exports found: " + (exportKeys.length ? exportKeys.join(", ") : "none")
+            + (unknownImports ? " | Unbundled imports substituted in preview: " + unknownImports : "");
         rootEl.innerHTML = \`
           <div style="padding: 32px; font-family: monospace; color: #f87171;">
             <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">Entry Component Not Found</h3>
