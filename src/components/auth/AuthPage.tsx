@@ -139,8 +139,64 @@ export const AuthPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
-      <div className="w-full max-w-sm bg-surface border-2 border-border rounded-tactile shadow-hard-sm p-5 sm:p-6">
+    <div
+      className="relative min-h-screen flex items-center justify-center overflow-hidden px-4 py-8"
+      style={{
+        // CSS-ONLY Minecraft-inspired scene (no image assets, so the
+        // snapshot push stays binary-free): day sky, blocky sun/clouds,
+        // stepped hills and trees, grass + dirt ground along the bottom.
+        background: "linear-gradient(180deg, #7ec8f7 0%, #a5dcf7 55%, #d8f0c0 100%)",
+      }}
+    >
+      {/* Decorative scene only - aria-hidden, pointer-events off, and
+          kept behind the card so the form stays fully readable. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* Blocky square sun */}
+        <div className="absolute right-[8%] top-[7%] h-12 w-12 bg-yellow-300 border-2 border-yellow-500 sm:h-14 sm:w-14" />
+        {/* Pixel clouds: stepped white rectangles */}
+        <div className="absolute left-[6%] top-[10%] hidden sm:block">
+          <div className="ml-4 h-4 w-20 bg-white/90" />
+          <div className="h-4 w-32 bg-white/90" />
+        </div>
+        <div className="absolute right-[22%] top-[22%]">
+          <div className="ml-3 h-3 w-14 bg-white/80" />
+          <div className="h-3 w-24 bg-white/80" />
+        </div>
+        {/* Stepped hills (blocky, no curves) */}
+        <div className="absolute bottom-[96px] left-0 h-16 w-[38%] bg-[#6abe30]" />
+        <div className="absolute bottom-[96px] left-[30%] h-10 w-[22%] bg-[#5aa82b]" />
+        <div className="absolute bottom-[96px] right-0 h-20 w-[34%] bg-[#6abe30]" />
+        {/* Blocky trees: square leaves + trunk */}
+        <div className="absolute bottom-[96px] left-[10%] hidden sm:block">
+          <div className="mx-auto h-8 w-8 bg-[#2f7a1e]" />
+          <div className="mx-auto h-6 w-2 bg-[#7a4a21]" />
+        </div>
+        <div className="absolute bottom-[96px] right-[12%] hidden sm:block">
+          <div className="mx-auto h-10 w-10 bg-[#2f7a1e]" />
+          <div className="mx-auto h-6 w-2 bg-[#7a4a21]" />
+        </div>
+        {/* Ground: grass strip over dirt, with a pixel-speckled dirt band
+            (repeating gradient, still pure CSS). */}
+        <div className="absolute bottom-0 left-0 right-0">
+          <div className="h-4 w-full bg-[#6abe30] border-t-2 border-[#4e8f22]" />
+          <div
+            className="h-20 w-full"
+            style={{
+              background:
+                "repeating-linear-gradient(90deg, #8a5a2b 0 16px, #7a4a21 16px 32px)",
+            }}
+          />
+        </div>
+      </div>
+      <div className="relative z-10 w-full max-w-sm bg-surface border-2 border-border rounded-tactile shadow-hard-sm p-5 sm:p-6">
+        {/* Pixel accent strip matching the PPT/team Minecraft branding */}
+        <div aria-hidden="true" className="mb-4 flex gap-1">
+          {["#6abe30", "#4e8f22", "#8a5a2b", "#6abe30", "#4e8f22", "#8a5a2b", "#6abe30", "#4e8f22"].map(
+            (color, i) => (
+              <span key={i} className="h-2 w-2" style={{ backgroundColor: color }} />
+            ),
+          )}
+        </div>
         {/* Branding */}
         <div className="flex items-center gap-3 mb-1">
           <div className="w-10 h-10 rounded-tactile bg-primary border-2 border-border flex items-center justify-center font-display font-bold text-lg text-foreground shadow-hard-sm shrink-0">
