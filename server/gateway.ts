@@ -37,6 +37,7 @@ const ALLOWED_ORIGINS = [
   "http://localhost:4173",
   "http://127.0.0.1:4173",
   "https://project-nova-eight.vercel.app",
+  "https://projectnova-ai.vercel.app",
   ...(process.env.ALLOWED_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())
