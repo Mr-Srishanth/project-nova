@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { capabilityRegistry, sanitizeTestOutput } from './testCapabilityRegistry';
+import { capabilityRegistry, sanitizeTestOutput, CAPABILITY_DRIFT_VERIFICATION } from './testCapabilityRegistry';
 import { generateDefaultTestPlan } from './testPlanEngine';
 import { testExecutionEngine } from './testExecutionEngine';
 import { testStorage } from '../storage/testStorage';
@@ -289,5 +289,95 @@ describe('Phase 15: Test Automation & Verification Engine', () => {
       expect(nullGate.passed).toBe(false);
       expect(nullGate.metrics.totalTests).toBe(0);
     });
+  });
+});
+
+describe('Drift verification route matching (Option A fix)', () => {
+  const projectId = 'test-proj-drift-routes';
+  const now = new Date().toISOString();
+
+  const routeBlueprint: Blueprint = {
+    id: 'bp-drift-routes',
+    projectId,
+    title: 'Drift Route Test',
+    overview: 'Blueprint for drift route matching',
+    problemStatement: 'Routes must be detected',
+    targetUsers: ['Engineers'],
+    realWorldUseCase: 'Quality gate enforcement',
+    features: { mvp: [], important: [], advanced: [], optional: [] },
+    techStack: [],
+    architecture: { summary: '', nodes: [], edges: [] },
+    database: { entities: [], relationships: [], sql: '' },
+    api: [
+      { method: 'GET', route: '/api/v1/menu', purpose: 'List menu' },
+      { method: 'POST', route: '/api/v1/orders', purpose: 'Create order' }
+    ],
+    uiScreens: [],
+    folderStructure: '',
+    testingStrategy: [],
+    deploymentStrategy: [],
+    futureImprovements: [],
+    updatedAt: now
+  };
+
+  const routeArtifacts: BuildArtifact[] = [
+    {
+      id: 'art-routes',
+      projectId,
+      path: 'src/api/routes.ts',
+      content: [
+        "app.get('/api/v1/menu', (req, res) => { res.json([]); });",
+        "router.post('/api/v1/orders', (req, res) => { res.json({}); });"
+      ].join('\n'),
+      language: 'typescript',
+      type: 'api',
+      purpose: 'api routes',
+      status: 'approved',
+      dependencies: [],
+      versions: [],
+      lastGeneratedAt: now,
+      lastModifiedAt: now
+    }
+  ];
+
+  it('detects Express-style app.get / router.post handlers as implemented blueprint routes', async () => {
+    const output = await CAPABILITY_DRIFT_VERIFICATION.execute({
+      projectId,
+      targetPaths: ['src/api/routes.ts'],
+      parameters: {},
+      artifacts: routeArtifacts,
+      blueprint: routeBlueprint
+    });
+
+    // Regression: the old bare regex returned matches like `get('/api/v1/menu'`
+    // which never equalled the blueprint key `GET /api/v1/menu`, so both
+    // routes were falsely reported missing (actual 2, status failed).
+    expect(output.status).toBe('passed');
+    expect(output.assertions).toHaveLength(1);
+    expect(output.assertions[0].expected).toBe(0);
+    expect(output.assertions[0].actual).toBe(0);
+    expect(output.assertions[0].passed).toBe(true);
+  });
+
+  it('still reports a blueprint route that is genuinely absent from the code', async () => {
+    const missingBlueprint: Blueprint = {
+      ...routeBlueprint,
+      api: [
+        ...routeBlueprint.api,
+        { method: 'DELETE', route: '/api/v1/menu/1', purpose: 'Delete menu item' }
+      ]
+    };
+
+    const output = await CAPABILITY_DRIFT_VERIFICATION.execute({
+      projectId,
+      targetPaths: ['src/api/routes.ts'],
+      parameters: {},
+      artifacts: routeArtifacts,
+      blueprint: missingBlueprint
+    });
+
+    expect(output.status).toBe('failed');
+    expect(output.assertions[0].actual).toBe(1);
+    expect(output.assertions[0].passed).toBe(false);
   });
 });

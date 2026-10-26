@@ -10,6 +10,7 @@ import { VerificationCapability, TestEvidenceItem, TestCaseAssertion } from '../
 import { runStaticAnalysis } from '../quality/staticAnalysis';
 import { runSecurityAnalysis } from '../quality/securityAnalysis';
 import { detectArchitectureDrift } from '../repository/driftEngine';
+import { parseSourceStructure } from '../repository/structureParser';
 import type { BuildArtifact } from '../../types/artifact';
 import type { Blueprint } from '../../types/blueprint';
 import type { RepositoryIndex } from '../../types/repository';
@@ -347,14 +348,16 @@ export const CAPABILITY_DRIFT_VERIFICATION: RegisteredCapabilityDefinition = {
         lastModifiedAt: a.lastModifiedAt || new Date().toISOString(),
         isExcluded: false,
         parseStatus: 'parsed' as const,
-        structure: {
-          exports: [],
-          imports: [],
-          symbols: [],
-          isEntryPointCandidate: false,
-          analysisType: 'parser_verified' as const,
-          apiRouteCandidates: a.content.match(/(get|post|put|delete|patch)\s*\(\s*['"](\/.*?)['"]/gi) || []
-        }
+        // Use the shared source parser (not a bare regex) so route candidates
+        // are emitted as "METHOD /path" — the exact key shape driftEngine
+        // compares against blueprint routes. The old regex returned whole
+        // matches like `get('/api/v1/menu'` which could never equal
+        // `GET /api/v1/menu`, so every implemented route was reported missing.
+        structure: parseSourceStructure(
+          a.path,
+          a.content,
+          a.language === 'json' ? 'json' : a.language === 'javascript' ? 'javascript' : 'typescript'
+        )
       }))
     };
 
