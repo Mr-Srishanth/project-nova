@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { isActionSupported, generateApprovalToken } from "./capabilityRegistry";
-import { validatePlanStepOrder, canTransitionStep, areStepDependenciesSatisfied } from "./planEngine";
+import { validatePlanStepOrder, canTransitionStep, areStepDependenciesSatisfied, isStepBlockedByApproval } from "./planEngine";
 import { executeRegisteredAction } from "./actionExecutor";
 import { computeNextRunTimestamp, isScheduleDue } from "./schedulerEngine";
 import { projectStorage } from "@/lib/storage/projectStorage";
@@ -160,6 +160,24 @@ describe("Execution Engine, Capability Registry & Active-Session Scheduler", () 
 
     schedule.enabled = false;
     expect(isScheduleDue(schedule, baseTime)).toBe(false);
+  });
+
+  it("treats an approval-gated step with no approver as blocked, not failed", () => {
+    const base: any = {
+      id: "stp-1",
+      planId: "plan-1",
+      order: 1,
+      title: "Gated step",
+      actionType: "refresh_state_assessment",
+      dependencies: [],
+      status: "ready",
+      retryCount: 0,
+      maxRetries: 2,
+    };
+    expect(isStepBlockedByApproval({ ...base, requiresApproval: true })).toBe(true);
+    expect(isStepBlockedByApproval({ ...base, requiresApproval: true, approvedBy: "a@b.c (self-approval)" })).toBe(false);
+    expect(isStepBlockedByApproval({ ...base, requiresApproval: false })).toBe(false);
+    expect(isStepBlockedByApproval({ ...base })).toBe(false);
   });
 
   it("successfully executes safe registered action and reports outcome", async () => {

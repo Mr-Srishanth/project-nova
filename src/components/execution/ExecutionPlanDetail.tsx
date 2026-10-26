@@ -114,7 +114,8 @@ export const ExecutionPlanDetail: React.FC<ExecutionPlanDetailProps> = ({
 
                 {/* Step controls */}
                 <div className="flex items-center gap-2 shrink-0">
-                  {step.status === "awaiting_approval" && (
+                  {step.requiresApproval && !step.approvedBy &&
+                    (step.status === "awaiting_approval" || step.status === "ready" || step.status === "failed") && (
                     <Button size="sm" onClick={() => onApproveStep(step)}>
                       Approve Step
                     </Button>

@@ -150,7 +150,7 @@ export class AlertEvaluationEngine {
   /**
    * Acknowledges an active alert.
    */
-  public acknowledgeAlert(projectId: string, alertId: string, acknowledgedBy: string = 'engineer'): AlertEvent | null {
+  public acknowledgeAlert(projectId: string, alertId: string, acknowledgedBy: string = 'App user'): AlertEvent | null {
     const alerts = monitoringStorage.listAlerts(projectId);
     const targetAlert = alerts.find(a => a.id === alertId);
     if (!targetAlert) return null;

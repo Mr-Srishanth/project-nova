@@ -9,6 +9,7 @@ import {
   Radio,
   CheckSquare
 } from "lucide-react";
+import { getCurrentUser } from "@/lib/supabase/auth";
 import { projectStorage } from "@/lib/storage/projectStorage";
 import { monitoringStorage } from "@/lib/storage/monitoringStorage";
 import { deploymentStorage } from "@/lib/storage/deploymentStorage";
@@ -144,7 +145,7 @@ export const MonitoringCenterPage: React.FC = () => {
       await healthObservationService.observeHttpTarget(target);
       // Re-evaluate alert rules
       alertEvaluationEngine.evaluateRules({ projectId: selectedProjectId });
-      
+
       // Reload state
       setTargets(monitoringStorage.listTargets(selectedProjectId));
       setAlerts(monitoringStorage.listAlerts(selectedProjectId));
@@ -155,19 +156,50 @@ export const MonitoringCenterPage: React.FC = () => {
     }
   };
 
-  const handleAcknowledgeAlert = (alertId: string) => {
-    alertEvaluationEngine.acknowledgeAlert(selectedProjectId, alertId, 'engineer');
+  // "Poll Targets" used to poll only targets[0] while its label promised
+  // all of them — poll every target, then report the real count.
+  const handlePollAllTargets = async () => {
+    if (targets.length === 0) return;
+    setIsRefreshing(true);
+    try {
+      for (const target of targets) {
+        await healthObservationService.observeHttpTarget(target);
+      }
+      alertEvaluationEngine.evaluateRules({ projectId: selectedProjectId });
+      setTargets(monitoringStorage.listTargets(selectedProjectId));
+      setAlerts(monitoringStorage.listAlerts(selectedProjectId));
+      setObservations(monitoringStorage.listObservations(selectedProjectId));
+      setNotice(`Polled ${targets.length} target(s). Checks updated.`);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Actor identity for audit records: the signed-in account when known,
+  // otherwise a plain "App user" label — never a fictional engineer name.
+  const resolveActor = async (): Promise<string> => {
+    try {
+      const user = await getCurrentUser();
+      if (user?.email) return user.email;
+    } catch {
+      /* signed out / unconfigured: keep the plain fallback */
+    }
+    return "App user";
+  };
+
+  const handleAcknowledgeAlert = async (alertId: string) => {
+    alertEvaluationEngine.acknowledgeAlert(selectedProjectId, alertId, await resolveActor());
     setAlerts(monitoringStorage.listAlerts(selectedProjectId));
     setNotice('Alert acknowledged.');
   };
 
   const handleResolveAlert = (alertId: string) => {
-    alertEvaluationEngine.resolveAlert(selectedProjectId, alertId, 'Resolved by engineer');
+    alertEvaluationEngine.resolveAlert(selectedProjectId, alertId, 'Resolved from Monitoring Center');
     setAlerts(monitoringStorage.listAlerts(selectedProjectId));
     setNotice('Alert marked resolved.');
   };
 
-  const handleCreateIncident = () => {
+  const handleCreateIncident = async () => {
     const activeAlerts = alerts.filter(a => a.status === 'active');
     if (activeAlerts.length === 0) {
       setNotice('No active alerts available to bundle into an incident.');
@@ -177,7 +209,7 @@ export const MonitoringCenterPage: React.FC = () => {
       selectedProjectId,
       `Service Degradation: ${activeAlerts[0].title}`,
       activeAlerts,
-      'lead_engineer'
+      await resolveActor()
     );
     setIncidents(monitoringStorage.listIncidents(selectedProjectId));
     setSelectedIncident(inc);
@@ -185,13 +217,13 @@ export const MonitoringCenterPage: React.FC = () => {
     setNotice(`Incident ${inc.id} opened.`);
   };
 
-  const handleTransitionIncident = (status: any) => {
+  const handleTransitionIncident = async (status: any) => {
     if (!selectedIncident) return;
     const res = incidentManagementService.transitionStatus(
       selectedProjectId,
       selectedIncident.id,
       status,
-      'lead_engineer',
+      await resolveActor(),
       `Manual status change to ${status}`
     );
     if (res.success && res.incident) {
@@ -243,7 +275,7 @@ export const MonitoringCenterPage: React.FC = () => {
           </select>
 
           <button
-            onClick={() => targets[0] && handleRefreshTarget(targets[0])}
+            onClick={() => void handlePollAllTargets()}
             disabled={isRefreshing || targets.length === 0}
             className="px-3.5 py-2 bg-[#153A52] hover:bg-[#153A52]/90 text-white rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50"
           >

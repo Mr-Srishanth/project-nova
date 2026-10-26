@@ -43,6 +43,15 @@ export function canTransitionStep(current: ExecutionStepStatus, next: ExecutionS
   return VALID_STEP_TRANSITIONS[current]?.includes(next) ?? false;
 }
 
+/**
+ * An approval-gated step with no approver is BLOCKED, not failed: running it
+ * would only fail in the executor (missing approval token), and marking it
+ * failed hides the real state — it is waiting for a human, not broken.
+ */
+export function isStepBlockedByApproval(step: ExecutionStep): boolean {
+  return step.requiresApproval === true && !step.approvedBy;
+}
+
 export function areStepDependenciesSatisfied(
   step: ExecutionStep,
   allSteps: ExecutionStep[]

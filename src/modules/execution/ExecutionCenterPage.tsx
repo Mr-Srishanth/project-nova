@@ -16,7 +16,7 @@ import type {
 import { projectStorage } from "@/lib/storage/projectStorage";
 import { executionStorage } from "@/lib/storage/executionStorage";
 import { executeRegisteredAction } from "@/lib/execution/actionExecutor";
-import { areStepDependenciesSatisfied } from "@/lib/execution/planEngine";
+import { areStepDependenciesSatisfied, isStepBlockedByApproval } from "@/lib/execution/planEngine";
 import { computeNextRunTimestamp, isScheduleDue } from "@/lib/execution/schedulerEngine";
 import { getCurrentUser } from "@/lib/supabase/auth";
 import { generateApprovalToken } from "@/lib/execution/capabilityRegistry";
@@ -204,6 +204,17 @@ export const ExecutionCenterPage: React.FC = () => {
   const handleExecuteStep = async (step: ExecutionStep, stepsOverride?: ExecutionStep[]): Promise<ExecutionStep[] | undefined> => {
     if (!activePlan || !selectedProject) return undefined;
     const baseSteps = stepsOverride ?? activePlan.steps;
+
+    // Approval gate: an approval-gated step with no approver must NOT run
+    // and must NOT be marked failed — it is blocked, not broken. Previously
+    // it fell through to the executor, which failed it with an approval
+    // error, while the UI offered no Approve button for ready/failed
+    // approval-gated steps (only for awaiting_approval), so the step could
+    // never be approved and Run All could never pass it.
+    if (isStepBlockedByApproval(step)) {
+      setNotice(`Step "${step.title}" requires approval first — approve it, then run it.`);
+      return baseSteps;
+    }
 
     // Check prerequisites
     if (!areStepDependenciesSatisfied(step, baseSteps)) {

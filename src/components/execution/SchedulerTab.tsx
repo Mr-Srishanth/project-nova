@@ -145,8 +145,8 @@ export const SchedulerTab: React.FC<SchedulerTabProps> = ({
                   className="w-full px-2.5 py-1.5 bg-background border border-border rounded text-foreground font-mono"
                 >
                   <option value="hourly">Hourly (Active Session)</option>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
+                  <option value="daily">Daily (Active Session)</option>
+                  <option value="weekly">Weekly (Active Session)</option>
                   <option value="none">One-time / Manual</option>
                 </select>
               </div>

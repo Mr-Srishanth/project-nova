@@ -45,6 +45,31 @@ describe('Phase 17: Live Monitoring, Alerting & Incident Response', () => {
     monitoringStorage.clearAll(projectId);
   });
 
+  describe('0. Audit identity is never a fictional engineer', () => {
+    it('acknowledging an alert without an actor records "App user", not "engineer"', () => {
+      const alert: AlertEvent = {
+        id: 'alt-actor',
+        dedupKey: 'alert_actor',
+        ruleId: mockRule.id,
+        targetId: mockTarget.id,
+        projectId,
+        severity: 'high',
+        title: 'Actor test',
+        message: 'Actor test',
+        firstOccurredAt: new Date().toISOString(),
+        lastOccurredAt: new Date().toISOString(),
+        occurrenceCount: 1,
+        status: 'active',
+        deliveryState: 'in_app_only',
+        evidenceSnapshot: {}
+      };
+      monitoringStorage.saveAlert(alert);
+      const acked = alertEvaluationEngine.acknowledgeAlert(projectId, 'alt-actor');
+      expect(acked?.acknowledgedBy).toBe('App user');
+      expect(acked?.acknowledgedBy).not.toBe('engineer');
+    });
+  });
+
   describe('1. Health Observations & SSRF Safeguards', () => {
     it('rejects loopback and private IP endpoints to prevent SSRF', async () => {
       const hostileTarget: MonitoringTarget = {
