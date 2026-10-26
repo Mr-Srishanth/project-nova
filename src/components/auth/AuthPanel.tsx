@@ -110,7 +110,7 @@ export const AuthPanel: React.FC = () => {
     };
 
     return (
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs font-mono">Set new password</span>
         <input
           type="password"
@@ -119,7 +119,7 @@ export const AuthPanel: React.FC = () => {
           onChange={(e) => setNewPassword(e.target.value)}
           placeholder="New password"
           aria-label="New password"
-          className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-28"
+          className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-full sm:w-28"
         />
         <input
           type="password"
@@ -128,7 +128,7 @@ export const AuthPanel: React.FC = () => {
           onChange={(e) => setConfirmPassword(e.target.value)}
           placeholder="Confirm new password"
           aria-label="Confirm new password"
-          className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-36"
+          className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-full sm:w-36"
         />
         <button
           type="button"
@@ -175,7 +175,7 @@ export const AuthPanel: React.FC = () => {
     };
 
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-mono text-foreground truncate max-w-[180px]" title={user.email || user.id}>
           {user.email || "Signed in"}
         </span>
@@ -247,7 +247,7 @@ export const AuthPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {!showForm ? (
         <button
           type="button"
@@ -258,7 +258,7 @@ export const AuthPanel: React.FC = () => {
         </button>
       ) : (
         <form
-          className="flex items-center gap-1.5"
+          className="flex flex-wrap items-center gap-1.5"
           onSubmit={(e) => {
             e.preventDefault();
             void handleAuth("signin");
@@ -271,7 +271,7 @@ export const AuthPanel: React.FC = () => {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email"
             aria-label="Email"
-            className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-36"
+            className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-full sm:w-36"
           />
           <input
             type="password"
@@ -280,7 +280,7 @@ export const AuthPanel: React.FC = () => {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             aria-label="Password"
-            className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-28"
+            className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-full sm:w-28"
           />
           <button
             type="submit"

@@ -23,6 +23,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AuthPanel } from "@/components/auth/AuthPanel";
+import { AuthPage, PASSWORD_RECOVERED_EVENT } from "@/components/auth/AuthPage";
+import {
+  useSupabaseAuth,
+  isPasswordRecoveryUrl,
+  onAuthStateChange,
+} from "@/lib/supabase/auth";
 
 interface NavItem {
   name: string;
@@ -38,6 +44,27 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const { activeProject } = useActiveProject();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Auth gate: when Supabase is configured, signed-out users must see
+  // the sign-in page FIRST — never the Workspaces/app pages. The gate
+  // reads the same session as AuthPanel, so signing in (or finishing
+  // a password recovery) opens the app without a reload.
+  const { user, loading: authLoading, configured: supabaseConfigured } = useSupabaseAuth();
+  const [recoveryMode, setRecoveryMode] = useState(false);
+
+  useEffect(() => {
+    if (isPasswordRecoveryUrl()) setRecoveryMode(true);
+    const unsubscribe = onAuthStateChange((_session, event) => {
+      if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
+      if (event === "SIGNED_OUT") setRecoveryMode(false);
+    });
+    const handleRecovered = () => setRecoveryMode(false);
+    window.addEventListener(PASSWORD_RECOVERED_EVENT, handleRecovered);
+    return () => {
+      unsubscribe?.();
+      window.removeEventListener(PASSWORD_RECOVERED_EVENT, handleRecovered);
+    };
+  }, []);
 
   // The 6 Primary Navigation Destinations
   const primaryNavItems: NavItem[] = [
@@ -142,6 +169,26 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   const isFullscreen = isFullscreenWorkspace;
 
+  // Gate placement: after every hook above, before any app UI renders,
+  // so no app page (and no Workspaces list) can flash first.
+  // 1. Still checking the session -> neutral loading state, never the app.
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <span className="text-sm font-mono text-foreground-muted">Checking account…</span>
+      </div>
+    );
+  }
+  // 2. Supabase configured + (signed out OR in password recovery) ->
+  //    ONLY the full-screen sign-in page. Signed-out users never reach
+  //    Workspaces, the sidebar, or any app route from here.
+  if (supabaseConfigured && (!user || recoveryMode)) {
+    return <AuthPage />;
+  }
+  // 3. Supabase NOT configured -> previous behaviour unchanged: the
+  //    normal app renders (top bar shows "Local Session Active").
+  //    This avoids a dead-end gate on local/unconfigured setups.
+
   return (
     <div
       className={cn(
@@ -192,6 +239,17 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </div>
             </Link>
           </div>
+
+        {/* Mobile-only auth: the desktop header (hidden md:flex) that
+            normally holds AuthPanel never renders below the md breakpoint,
+            so on phones AuthPanel lives here, at the top of the mobile
+            menu. md:hidden keeps it off desktop, where the header copy
+            already shows. This div is not a nav link, so tapping Sign in /
+            Sign up never triggers the menu-close onClick on the links
+            below, and the form stays usable while the menu is open. */}
+        <div className="md:hidden px-3 pt-3 pb-3 border-b-2 border-border">
+          <AuthPanel />
+        </div>
 
         {/* 6 Primary Navigation Links */}
         <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
