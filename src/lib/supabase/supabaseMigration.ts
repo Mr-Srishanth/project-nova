@@ -6,8 +6,10 @@
  * to Supabase PostgreSQL without data loss or duplicate collisions.
  */
 
-import { projectStorage } from '../storage/projectStorage';
-import { brainStorage } from '../storage/brainStorage';
+// NOTE: migration must read LOCAL data, not the proxy exports (which route
+// to Supabase when signed in) — otherwise it would migrate nothing.
+import { localProjectStorage as projectStorage } from '../storage/projectStorage';
+import { localBrainStorage as brainStorage } from '../storage/brainStorage';
 import { getSupabaseClient } from './supabaseClient';
 
 export interface MigrationSummary {
@@ -64,6 +66,8 @@ export async function migrateLocalStorageToSupabase(): Promise<MigrationSummary>
           milestones: project.milestones,
           stage_states: project.stageStates || [],
           roadmap_milestones: project.roadmapMilestones || [],
+          initial_prompt: project.initialPrompt || null,
+          generation_status: project.generationStatus || null,
           created_at: project.createdAt,
           updated_at: project.updatedAt,
         });
@@ -88,6 +92,12 @@ export async function migrateLocalStorageToSupabase(): Promise<MigrationSummary>
               source: mem.source,
               status: mem.status,
               tags: mem.tags || [],
+              verification_state: mem.verificationState || null,
+              version: mem.version ?? 1,
+              rationale: mem.rationale || null,
+              related_memory_ids: mem.relatedMemoryIds || [],
+              related_entity_ref: mem.relatedEntityRef || null,
+              superseded_by: mem.supersededBy || null,
               created_at: mem.createdAt,
               updated_at: mem.updatedAt,
             });

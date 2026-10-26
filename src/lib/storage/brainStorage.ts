@@ -309,4 +309,64 @@ class LocalBrowserBrainStorageAdapter implements IProjectBrainStorageAdapter {
   }
 }
 
-export const brainStorage: IProjectBrainStorageAdapter = new LocalBrowserBrainStorageAdapter();
+/** Plain local adapter, exported for Supabase adapters / migration so they
+ *  can use local data without going through the proxy below (which would
+ *  recurse when a user is signed in). */
+export const localBrainStorage = new LocalBrowserBrainStorageAdapter();
+
+/**
+ * Active-storage resolution, mirroring projectStorage: signed in +
+ * Supabase configured → the Supabase Brain adapter (owner_id + project_id
+ * filtered, never merged with local); signed out / unconfigured → local.
+ * Loaded lazily to avoid a static cycle with the Supabase adapter.
+ */
+async function resolveBrainStorage(): Promise<IProjectBrainStorageAdapter> {
+  try {
+    const { getSupabaseClient } = await import("@/lib/supabase/supabaseClient");
+    const supabase = getSupabaseClient();
+    if (!supabase) return localBrainStorage;
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) return localBrainStorage;
+    const { supabaseBrainStorage } = await import(
+      "@/lib/supabase/supabaseBrainStorage"
+    );
+    return supabaseBrainStorage;
+  } catch {
+    return localBrainStorage;
+  }
+}
+
+// All existing consumers keep importing `brainStorage`; the proxy routes
+// each call to Supabase when a user is signed in, local otherwise.
+export const brainStorage: IProjectBrainStorageAdapter = {
+  async list(projectId: string) {
+    return (await resolveBrainStorage()).list(projectId);
+  },
+  async getById(id: string) {
+    return (await resolveBrainStorage()).getById(id);
+  },
+  async create(input: CreateMemoryInput) {
+    return (await resolveBrainStorage()).create(input);
+  },
+  async update(id: string, patch: UpdateMemoryInput) {
+    return (await resolveBrainStorage()).update(id, patch);
+  },
+  async delete(id: string) {
+    return (await resolveBrainStorage()).delete(id);
+  },
+  async search(projectId: string, query: string, type?: ProjectMemoryType) {
+    return (await resolveBrainStorage()).search(projectId, query, type);
+  },
+  async supersede(oldMemoryId: string, newMemoryInput: CreateMemoryInput) {
+    return (await resolveBrainStorage()).supersede(oldMemoryId, newMemoryInput);
+  },
+  async confirmProposal(id: string) {
+    return (await resolveBrainStorage()).confirmProposal(id);
+  },
+  async rejectProposal(id: string) {
+    return (await resolveBrainStorage()).rejectProposal(id);
+  },
+  async resolveQuestion(id: string, resolutionNote?: string) {
+    return (await resolveBrainStorage()).resolveQuestion(id, resolutionNote);
+  },
+};

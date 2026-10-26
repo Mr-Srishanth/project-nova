@@ -132,5 +132,60 @@ class LocalBrowserStorageAdapter implements IProjectStorageAdapter {
   }
 }
 
-// Export singleton instance. Can be swapped for Supabase/Postgres adapter in subsequent phases without changing consumer components.
-export const projectStorage: IProjectStorageAdapter = new LocalBrowserStorageAdapter();
+/** The plain local adapter, exported for Supabase adapters / migration
+ *  so they can fall back to (or read) local data without going through
+ *  the proxy below — using the proxy there would recurse. */
+export const localProjectStorage = new LocalBrowserStorageAdapter();
+
+/**
+ * Active-storage resolution (Supabase Auth + per-user isolation).
+ *
+ * Signed in + Supabase configured (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY):
+ * the Supabase adapter is used, and it only ever touches rows owned by the
+ * signed-in user (owner_id filter on every query, no local merging).
+ * Signed out / unconfigured: the local browser adapter, exactly as before.
+ *
+ * The Supabase adapter is loaded lazily (dynamic import) so this module
+ * does not statically depend on it — the adapter itself imports the local
+ * adapter above, and a static cycle would break module initialisation.
+ * getCorruptedBackup() is synchronous and local-only by definition.
+ */
+async function resolveProjectStorage(): Promise<IProjectStorageAdapter> {
+  try {
+    const { getSupabaseClient } = await import("@/lib/supabase/supabaseClient");
+    const supabase = getSupabaseClient();
+    if (!supabase) return localProjectStorage;
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) return localProjectStorage;
+    const { supabaseProjectStorage } = await import(
+      "@/lib/supabase/supabaseProjectStorage"
+    );
+    return supabaseProjectStorage;
+  } catch {
+    return localProjectStorage;
+  }
+}
+
+// Export singleton instance. All existing consumers keep importing
+// `projectStorage`; the proxy below routes each call to the Supabase
+// adapter when a user is signed in, and to local storage otherwise.
+export const projectStorage: IProjectStorageAdapter = {
+  async list() {
+    return (await resolveProjectStorage()).list();
+  },
+  async getById(id: string) {
+    return (await resolveProjectStorage()).getById(id);
+  },
+  async create(input: CreateProjectInput) {
+    return (await resolveProjectStorage()).create(input);
+  },
+  async update(id: string, patch: UpdateProjectInput) {
+    return (await resolveProjectStorage()).update(id, patch);
+  },
+  async delete(id: string) {
+    return (await resolveProjectStorage()).delete(id);
+  },
+  getCorruptedBackup() {
+    return localProjectStorage.getCorruptedBackup();
+  },
+};

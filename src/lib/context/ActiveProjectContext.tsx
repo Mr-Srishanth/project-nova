@@ -9,6 +9,7 @@ import React, {
 import { useSearchParams } from "react-router-dom";
 import type { Project } from "@/types/project";
 import { projectStorage } from "@/lib/storage/projectStorage";
+import { AUTH_CHANGED_EVENT } from "@/lib/supabase/auth";
 
 export const ACTIVE_PROJECT_STORAGE_KEY = "projectnova_active_project_id_v1";
 
@@ -91,6 +92,17 @@ export const ActiveProjectProvider: React.FC<{ children: ReactNode }> = ({ child
   // Initial load
   useEffect(() => {
     refreshProjects();
+  }, [refreshProjects]);
+
+  // Refresh when auth changes (sign in / sign out): the active storage
+  // switches between Supabase (own projects only) and local fallback,
+  // so the list must not keep showing the previous account's projects.
+  useEffect(() => {
+    const handler = () => {
+      void refreshProjects();
+    };
+    window.addEventListener(AUTH_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler);
   }, [refreshProjects]);
 
   // React to external URL parameter changes (e.g. browser back/forward or deep links)

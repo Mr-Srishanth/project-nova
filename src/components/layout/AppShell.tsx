@@ -22,6 +22,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AuthPanel } from "@/components/auth/AuthPanel";
 
 interface NavItem {
   name: string;
@@ -336,7 +337,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             </div>
             <div className="flex items-center gap-2">
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary border border-border" />
-              <span className="text-xs font-mono font-medium text-foreground">Local Session Active</span>
+              <AuthPanel />
             </div>
           </header>
         )}

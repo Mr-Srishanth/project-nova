@@ -1,66 +1,88 @@
 /**
- * ProjectNova AI — Supabase Database Adapter for Projects
- * Phase 20 Post-Roadmap Infrastructure Integration
+ * ProjectNova AI — Supabase Database Adapter for Projects (per-user isolated)
  *
- * Plugs directly into existing IProjectStorageAdapter interface.
- * Implements transparent cloud sync with LocalStorage offline fallback.
+ * Plugs into the existing IProjectStorageAdapter interface.
+ *
+ * Isolation rules (do not weaken these):
+ * - Signed in + Supabase configured: Supabase is the source of truth.
+ *   EVERY remote query filters by owner_id = the signed-in user's id, so a
+ *   user can only list / get / update / delete their own rows. Row Level
+ *   Security on the server (see supabase-rls.sql) enforces the same rule
+ *   even if a client query forgot the filter.
+ * - Remote results are NEVER merged with local browser projects. A signed-in
+ *   user with zero Supabase rows sees zero projects, not the local list.
+ * - create() sets owner_id = the signed-in user's id and never accepts an
+ *   owner from input (CreateProjectInput has no owner field). update()
+ *   preserves the row's existing owner_id — it is never overwritten.
+ * - Signed out / Supabase unconfigured: local browser storage only.
+ * - Remote failure (offline / network error): that single call falls back
+ *   to local storage so the app keeps working offline. It is never merged
+ *   with remote results, and a remote row that exists is never shadowed
+ *   by a local copy.
+ *
+ * Mapping: initialPrompt / generationStatus round-trip through the
+ * initial_prompt / generation_status columns added by
+ * supabase-schema-fix.sql (null on old rows, which maps back to
+ * undefined in the app).
  */
 
 import type { Project, CreateProjectInput, UpdateProjectInput } from '@/types/project';
-import { IProjectStorageAdapter, projectStorage as localProjectStorage } from '../storage/projectStorage';
+import { IProjectStorageAdapter, localProjectStorage } from '../storage/projectStorage';
 import { getSupabaseClient } from './supabaseClient';
+import { getCurrentUser } from './auth';
 import { generateId } from '@/lib/utils';
 
 export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
   private localFallback: IProjectStorageAdapter = localProjectStorage;
 
+  /** Signed-in user id, or null when signed out / unconfigured. */
+  private async currentUserId(): Promise<string | null> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return null;
+    return (await getCurrentUser())?.id ?? null;
+  }
+
   async list(): Promise<Project[]> {
     const supabase = getSupabaseClient();
-    if (!supabase) {
-      return this.localFallback.list();
-    }
+    if (!supabase) return this.localFallback.list();
+    const userId = await this.currentUserId();
+    // Signed out: local only. Never show another user's remote rows.
+    if (!userId) return this.localFallback.list();
 
     try {
       const { data, error } = await supabase
         .from('projects')
         .select('*')
+        .eq('owner_id', userId)
         .order('created_at', { ascending: false });
-
-      if (error || !data || data.length === 0) {
-        // If remote returns 0 items or RLS unauthenticated error, merge with local projects
-        const localItems = await this.localFallback.list();
-        if (data && data.length > 0) {
-          const remoteMapped = data.map(this.mapRowToProject);
-          const remoteIds = new Set(remoteMapped.map((p) => p.id));
-          return [...remoteMapped, ...localItems.filter((l) => !remoteIds.has(l.id))];
-        }
-        return localItems;
+      if (error) {
+        console.warn('[Supabase Storage] List failed:', error.message);
+        return [];
       }
-
-      return data.map(this.mapRowToProject);
+      // No local merge, even when remote is empty.
+      return (data ?? []).map(this.mapRowToProject);
     } catch (err) {
-      console.warn('[Supabase Storage] Network error listing projects:', err);
+      // Offline: local fallback for this call only, never merged.
+      console.warn('[Supabase Storage] Network error listing projects, using offline fallback:', err);
       return this.localFallback.list();
     }
   }
 
   async getById(id: string): Promise<Project | null> {
     const supabase = getSupabaseClient();
-    if (!supabase) {
-      return this.localFallback.getById(id);
-    }
+    if (!supabase) return this.localFallback.getById(id);
+    const userId = await this.currentUserId();
+    if (!userId) return this.localFallback.getById(id);
 
     try {
       const { data, error } = await supabase
         .from('projects')
         .select('*')
         .eq('id', id)
+        .eq('owner_id', userId)
         .maybeSingle();
-
-      if (error || !data) {
-        return this.localFallback.getById(id);
-      }
-
+      // Remote miss (including another user's id) is a miss — do not check local.
+      if (error || !data) return null;
       return this.mapRowToProject(data);
     } catch {
       return this.localFallback.getById(id);
@@ -69,13 +91,12 @@ export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
 
   async create(input: CreateProjectInput): Promise<Project> {
     const supabase = getSupabaseClient();
-    if (!supabase) {
-      return this.localFallback.create(input);
-    }
+    if (!supabase) return this.localFallback.create(input);
+    const userId = await this.currentUserId();
+    if (!userId) return this.localFallback.create(input);
 
     const id = generateId('proj');
     const now = new Date().toISOString();
-
     const newProject: Project = {
       id,
       name: input.name.trim(),
@@ -87,79 +108,84 @@ export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
       discoveryMode: input.discoveryMode || 'custom',
       targetDeadline: input.targetDeadline?.trim() || undefined,
       constraints: input.constraints?.trim() || undefined,
+      initialPrompt: input.initialPrompt?.trim() || undefined,
+      generationStatus: input.generationStatus || (input.initialPrompt?.trim() ? 'not_generated' : undefined),
       createdAt: now,
       updatedAt: now,
       milestones: [],
     };
 
     try {
-      const user = (await supabase.auth.getUser()).data.user;
-      const row = this.mapProjectToRow(newProject, user?.id);
-
+      const row = this.mapProjectToRow(newProject, userId);
       const { error } = await supabase.from('projects').insert(row);
       if (error) {
-        console.warn('[Supabase Storage] Insert failed, storing locally:', error.message);
-        // Save to local fallback using the exact generated newProject so the ID matches
-        return await this.localFallback.create({
-          ...input,
-          name: newProject.name,
-        }).then((saved) => ({
-          ...newProject,
-          id: saved.id
-        }));
+        console.warn('[Supabase Storage] Insert failed, storing locally (offline fallback):', error.message);
+        return this.localFallback.create(input);
       }
-      // Keep local in sync
-      await this.localFallback.create({
-        ...input,
-        name: newProject.name
-      }).catch(() => null);
       return newProject;
     } catch (err) {
-      console.warn('[Supabase Storage] Exception on insert, saving locally:', err);
+      console.warn('[Supabase Storage] Exception on insert, saving locally (offline fallback):', err);
       return this.localFallback.create(input);
     }
   }
 
   async update(id: string, patch: UpdateProjectInput): Promise<Project> {
     const supabase = getSupabaseClient();
-    if (!supabase) {
-      return this.localFallback.update(id, patch);
-    }
+    if (!supabase) return this.localFallback.update(id, patch);
+    const userId = await this.currentUserId();
+    if (!userId) return this.localFallback.update(id, patch);
 
     try {
-      const current = await this.getById(id);
-      if (!current) {
-        throw new Error(`Project ${id} not found.`);
+      // Fetch the owned row first: both verifies ownership and preserves owner_id.
+      const { data: existing, error: fetchError } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', id)
+        .eq('owner_id', userId)
+        .maybeSingle();
+      if (fetchError || !existing) {
+        throw new Error(`Project ${id} not found for this user.`);
       }
-
-      const updated: Project = {
-        ...current,
-        ...patch,
-        updatedAt: new Date().toISOString(),
-      };
-
-      const row = this.mapProjectToRow(updated);
-      const { error } = await supabase.from('projects').update(row).eq('id', id);
-
-      if (error) {
-        console.warn('[Supabase Storage] Update failed on remote:', error.message);
-      }
-      // Keep local in sync
-      await this.localFallback.update(id, patch).catch(() => null);
+      const current = this.mapRowToProject(existing);
+      const updated: Project = { ...current, ...patch, updatedAt: new Date().toISOString() };
+      // mapProjectToRow with the existing owner_id: owner is never overwritten.
+      const row = this.mapProjectToRow(updated, existing.owner_id as string);
+      const { error } = await supabase
+        .from('projects')
+        .update(row)
+        .eq('id', id)
+        .eq('owner_id', userId);
+      if (error) throw new Error(error.message);
       return updated;
-    } catch {
-      return this.localFallback.update(id, patch);
+    } catch (err) {
+      // Only fall back to local if a local copy of this project exists;
+      // otherwise surface the failure instead of silently creating one.
+      const local = await this.localFallback.getById(id).catch(() => null);
+      if (local) {
+        console.warn('[Supabase Storage] Update failed on remote, updating local copy:', err);
+        return this.localFallback.update(id, patch);
+      }
+      throw err;
     }
   }
 
   async delete(id: string): Promise<boolean> {
     const supabase = getSupabaseClient();
-    if (!supabase) {
-      return this.localFallback.delete(id);
-    }
+    if (!supabase) return this.localFallback.delete(id);
+    const userId = await this.currentUserId();
+    if (!userId) return this.localFallback.delete(id);
 
     try {
-      await supabase.from('projects').delete().eq('id', id);
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id)
+        .eq('owner_id', userId);
+      if (error) {
+        console.warn('[Supabase Storage] Remote delete failed:', error.message);
+        return false;
+      }
+      // Best-effort local cleanup of the same id (never a merge).
       await this.localFallback.delete(id).catch(() => null);
       return true;
     } catch {
@@ -187,15 +213,17 @@ export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
       milestones: row.milestones || [],
       stageStates: row.stage_states || [],
       roadmapMilestones: row.roadmap_milestones || [],
+      initialPrompt: row.initial_prompt || undefined,
+      generationStatus: row.generation_status || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
   }
 
-  private mapProjectToRow(project: Project, ownerId?: string): any {
+  private mapProjectToRow(project: Project, ownerId: string): any {
     return {
       id: project.id,
-      owner_id: ownerId || null,
+      owner_id: ownerId,
       name: project.name,
       description: project.description,
       objective: project.objective,
@@ -209,6 +237,8 @@ export class SupabaseProjectStorageAdapter implements IProjectStorageAdapter {
       milestones: project.milestones,
       stage_states: project.stageStates || [],
       roadmap_milestones: project.roadmapMilestones || [],
+      initial_prompt: project.initialPrompt || null,
+      generation_status: project.generationStatus || null,
       created_at: project.createdAt,
       updated_at: project.updatedAt,
     };
