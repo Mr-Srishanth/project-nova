@@ -23,6 +23,7 @@
  * in / sign out.
  */
 import React, { useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import {
   useSupabaseAuth,
   signInWithEmail,
@@ -47,6 +48,11 @@ export const AuthPanel: React.FC = () => {
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  // Independent show/hide toggles, declared here (before the early
+  // returns below) so hook order stays stable across renders.
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Detect a password-recovery redirect: either the URL hash carries
   // type=recovery, or supabase-js fires a PASSWORD_RECOVERY event.
@@ -96,6 +102,8 @@ export const AuthPanel: React.FC = () => {
         setRecoveryMode(false);
         setNewPassword("");
         setConfirmPassword("");
+        setShowNewPassword(false);
+        setShowConfirmPassword(false);
         try {
           window.history.replaceState(null, "", window.location.pathname);
         } catch {
@@ -112,24 +120,46 @@ export const AuthPanel: React.FC = () => {
     return (
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs font-mono">Set new password</span>
-        <input
-          type="password"
-          required
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="New password"
-          aria-label="New password"
-          className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-full sm:w-28"
-        />
-        <input
-          type="password"
-          required
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder="Confirm new password"
-          aria-label="Confirm new password"
-          className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-full sm:w-36"
-        />
+        <div className="relative w-full sm:w-28">
+          <input
+            type={showNewPassword ? "text" : "password"}
+            required
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="New password"
+            aria-label="New password"
+            className="text-xs px-2 py-1 pr-7 border border-border rounded-tactile-sm bg-surface w-full"
+          />
+          <button
+            type="button"
+            onClick={() => setShowNewPassword((v) => !v)}
+            aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+            title={showNewPassword ? "Hide password" : "Show password"}
+            className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-foreground-muted hover:text-foreground"
+          >
+            {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+        <div className="relative w-full sm:w-36">
+          <input
+            type={showConfirmPassword ? "text" : "password"}
+            required
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm new password"
+            aria-label="Confirm new password"
+            className="text-xs px-2 py-1 pr-7 border border-border rounded-tactile-sm bg-surface w-full"
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword((v) => !v)}
+            aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+            title={showConfirmPassword ? "Hide password" : "Show password"}
+            className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-foreground-muted hover:text-foreground"
+          >
+            {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        </div>
         <button
           type="button"
           disabled={busy}
@@ -273,15 +303,26 @@ export const AuthPanel: React.FC = () => {
             aria-label="Email"
             className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-full sm:w-36"
           />
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            aria-label="Password"
-            className="text-xs px-2 py-1 border border-border rounded-tactile-sm bg-surface w-full sm:w-28"
-          />
+          <div className="relative w-full sm:w-28">
+            <input
+              type={showPassword ? "text" : "password"}
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              aria-label="Password"
+              className="text-xs px-2 py-1 pr-7 border border-border rounded-tactile-sm bg-surface w-full"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              title={showPassword ? "Hide password" : "Show password"}
+              className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-foreground-muted hover:text-foreground"
+            >
+              {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
           <button
             type="submit"
             disabled={busy}

@@ -16,6 +16,7 @@
  * horizontal overflow on ~360px phone screens.
  */
 import React, { useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import {
   signInWithEmail,
   signUpWithEmail,
@@ -36,6 +37,11 @@ export const AuthPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  // Independent show/hide toggles: revealing one password field must
+  // never reveal another (e.g. main password vs confirm password).
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +117,8 @@ export const AuthPage: React.FC = () => {
       setRecoveryMode(false);
       setNewPassword("");
       setConfirmPassword("");
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
       try {
         window.history.replaceState(null, "", window.location.pathname);
       } catch {
@@ -165,31 +173,53 @@ export const AuthPage: React.FC = () => {
               <label htmlFor="auth-new-password" className="block text-xs font-semibold text-foreground mb-1">
                 New password
               </label>
-              <input
-                id="auth-new-password"
-                type="password"
-                required
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="New password"
-                autoComplete="new-password"
-                className="w-full text-sm px-3 py-2 border-2 border-border rounded-tactile-sm bg-background text-foreground"
-              />
+              <div className="relative">
+                <input
+                  id="auth-new-password"
+                  type={showNewPassword ? "text" : "password"}
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="New password"
+                  autoComplete="new-password"
+                  className="w-full text-sm px-3 py-2 pr-10 border-2 border-border rounded-tactile-sm bg-background text-foreground"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((v) => !v)}
+                  aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+                  title={showNewPassword ? "Hide password" : "Show password"}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-foreground-muted hover:text-foreground"
+                >
+                  {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             <div>
               <label htmlFor="auth-confirm-password" className="block text-xs font-semibold text-foreground mb-1">
                 Confirm new password
               </label>
-              <input
-                id="auth-confirm-password"
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm new password"
-                autoComplete="new-password"
-                className="w-full text-sm px-3 py-2 border-2 border-border rounded-tactile-sm bg-background text-foreground"
-              />
+              <div className="relative">
+                <input
+                  id="auth-confirm-password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
+                  className="w-full text-sm px-3 py-2 pr-10 border-2 border-border rounded-tactile-sm bg-background text-foreground"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((v) => !v)}
+                  aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                  title={showConfirmPassword ? "Hide password" : "Show password"}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-foreground-muted hover:text-foreground"
+                >
+                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             <button
               type="submit"
@@ -269,16 +299,27 @@ export const AuthPage: React.FC = () => {
               <label htmlFor="auth-password" className="block text-xs font-semibold text-foreground mb-1">
                 Password
               </label>
-              <input
-                id="auth-password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                autoComplete={view === "signup" ? "new-password" : "current-password"}
-                className="w-full text-sm px-3 py-2 border-2 border-border rounded-tactile-sm bg-background text-foreground"
-              />
+              <div className="relative">
+                <input
+                  id="auth-password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  autoComplete={view === "signup" ? "new-password" : "current-password"}
+                  className="w-full text-sm px-3 py-2 pr-10 border-2 border-border rounded-tactile-sm bg-background text-foreground"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  title={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-foreground-muted hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             <button
               type="submit"
