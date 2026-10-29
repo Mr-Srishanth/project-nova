@@ -1,7 +1,6 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ActiveProjectProvider } from "@/lib/context/ActiveProjectContext";
-import { DemoModeProvider } from "@/lib/demo/demoMode";
 import { AppShell } from "@/components/layout/AppShell";
 import { OverviewPage } from "@/modules/overview/OverviewPage";
 import { DiscoveryPage } from "@/modules/discovery/DiscoveryPage";
@@ -26,13 +25,11 @@ import { MonitoringCenterPage } from "@/modules/monitoring/MonitoringCenterPage"
 import { VisualWorkflowBuilderPage } from "@/modules/workflow/VisualWorkflowBuilderPage";
 import { TeamWorkspacePage } from "@/modules/team/TeamWorkspacePage";
 import { SettingsPage } from "@/modules/settings/SettingsPage";
-import { DemoModePage } from "@/modules/demo/DemoModePage";
 
 export const AppRouter: React.FC = () => {
   return (
     <BrowserRouter>
       <ActiveProjectProvider>
-        <DemoModeProvider>
         <AppShell>
           <Routes>
           <Route path="/" element={<OverviewPage />} />
@@ -58,7 +55,6 @@ export const AppRouter: React.FC = () => {
           <Route path="/workflows" element={<VisualWorkflowBuilderPage />} />
           <Route path="/team" element={<TeamWorkspacePage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/demo" element={<DemoModePage />} />
 
           <Route path="/deploy" element={<Navigate to="/deployments" replace />} />
           <Route path="/test" element={<Navigate to="/testing" replace />} />
@@ -68,7 +64,6 @@ export const AppRouter: React.FC = () => {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AppShell>
-        </DemoModeProvider>
     </ActiveProjectProvider>
   </BrowserRouter>
   );
