@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AuthPanel } from "@/components/auth/AuthPanel";
+import { useDemoMode } from "@/lib/demo/demoMode";
 import { AuthPage, PASSWORD_RECOVERED_EVENT } from "@/components/auth/AuthPage";
 import {
   useSupabaseAuth,
@@ -42,6 +43,7 @@ interface NavItem {
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const { activeProject } = useActiveProject();
+  const { demoOn, setDemoOn } = useDemoMode();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -121,6 +123,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         location.pathname.startsWith("/release") ||
         location.pathname.startsWith("/monitoring"),
       description: "Hosting, preflight & runtime health",
+    },
+    {
+      name: "Demo Mode",
+      href: "/demo",
+      icon: <Sparkles className="w-4 h-4 text-amber-500" />,
+      active: location.pathname.startsWith("/demo"),
+      badge: demoOn ? "ON" : undefined,
+      description: "Predefined demo projects, tests & deploy status",
     },
     {
       name: "Settings",
@@ -396,6 +406,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               )}
             </div>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDemoOn(!demoOn)}
+                className="text-[11px] font-bold px-2.5 py-1 border-2 border-amber-500 bg-amber-50 text-amber-800 rounded-tactile-sm"
+                title="Demo Mode shows predefined demo data only and never changes real projects"
+              >
+                Demo Mode: {demoOn ? "ON" : "OFF"}
+              </button>
               <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary border border-border" />
               <AuthPanel />
             </div>
@@ -410,6 +428,20 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               : "p-4 md:p-8 max-w-7xl mx-auto"
           )}
         >
+          {demoOn && !location.pathname.startsWith("/demo") && (
+            <div className="mb-4 border-2 border-amber-500 bg-amber-50 rounded-tactile p-3 text-sm">
+              <span className="font-bold">Demo Mode ON</span> — predefined demo data only. Your real
+              projects are untouched.{" "}
+              <Link to="/demo" className="underline font-semibold">
+                Open Demo Mode
+              </Link>{" "}
+              or{" "}
+              <button type="button" className="underline font-semibold" onClick={() => setDemoOn(false)}>
+                turn it OFF
+              </button>
+              .
+            </div>
+          )}
           <ErrorBoundary>
             {children}
           </ErrorBoundary>
