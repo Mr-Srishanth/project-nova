@@ -1,8 +1,26 @@
-# ProjectNova AI
+# 🚀 ProjectNova AI
 
-An independent, hybrid-autonomous AI Project Operating System.
+**An AI Project Operating System — describe an idea in plain words, get a full project blueprint, milestones, tasks and a working preview.**
 
-Takes projects from idea through discovery, architectural blueprinting, execution milestones, quality verification, and deployment.
+🔗 **Live Demo:** https://projectnova-ai.vercel.app/
+
+An independent, hybrid-autonomous AI Project Operating System. Takes projects from idea through discovery, architectural blueprinting, execution milestones, quality verification, and deployment.
+
+---
+
+## ✨ What it does
+
+- 💡 **Project Discovery** — turn a plain-language idea into a structured project
+- 🧭 **Blueprint Studio** — interactive system topology diagram + database DDL generator
+- ✅ **Milestones & Tasks** — track execution with a milestone task tracker
+- 🧪 **Quality verification** — checks before you deploy
+- ☁️ **Supabase auth & cloud storage** — your projects, signed in and synced
+
+## 👥 Team
+
+Built by **Team Marvel** — Arrabola Srishanth, Cheldi Beerendra Avinash, Cheruku Amisha, Megavath Varun Sai — guided by Vineela, Vignan Institute of Technology and Science.
+
+🎤 Presented at the **Vignan Innovative Project Expo, October 2026**.
 
 ---
 
